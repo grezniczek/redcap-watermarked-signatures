@@ -1,0 +1,34 @@
+{
+    "name": "Watermarked Signatures",
+    "namespace": "DE\\RUB\\WatermarkedSignaturesExternalModule",
+    "description": "A REDCap external module that adds watermarks to signatures.",
+    "documentation": "config_readme",
+    "tt_documentation": true,
+    "authors": [
+        {
+            "name": "Günther Rezniczek",
+            "email": "guenther.rezniczek@rub.de",
+            "institution": "St. Elisabeth Gruppe - Klinikum der Ruhr-Universität Bochum"
+        }
+    ],
+    "framework-version": 16,
+    "auth-ajax-actions": [
+    ],
+    "action-tags": [
+        {
+            "tag": "@WATERMARKED-SIGNATURE",
+            "description": "config_at_watermarked_signature",
+            "tt_description": true
+        }
+    ],
+    "system-settings": [
+    ],
+    "project-settings": [
+        {
+            "key": "javascript-debug",
+            "name": "config_javascript_debug",
+            "tt_name": true,
+            "type": "checkbox"
+        }
+    ]
+}

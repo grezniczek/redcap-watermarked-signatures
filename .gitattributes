@@ -1,0 +1,8 @@
+/.vscode export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
+/SUPPORT.md export-ignore
+/support/ export-ignore
+/tests/ export-ignore
+EM.code-workspace export-ignore
+package-lock.json export-ignore

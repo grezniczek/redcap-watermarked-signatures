@@ -1,0 +1,42 @@
+# CITATION.cff
+# See: https://citation-file-format.github.io/
+
+cff-version: 1.2.0
+message: >-
+  If you use Watermarked Signatures in a project that generates a research output,
+  please cite this software in addition to citing REDCap.
+
+type: software
+
+title: "Watermarked Signatures (REDCap External Module)"
+short-title: "Watermarked Signatures"
+
+abstract: >-
+  Watermarked Signatures is a REDCap External Module for ...
+
+authors:
+  - family-names: "Rezniczek"
+    given-names: "Günther A."
+    orcid: "https://orcid.org/0000-0002-0852-6002"
+    affiliation: "St. Elisabeth Gruppe GmbH, Klinikum der Ruhr-Universität Bochum, Herne, Germany"
+
+keywords:
+  - REDCap
+  - REDCap External Module
+  - signatures
+  - e-consent
+  - clinical research
+
+license: "MIT"
+
+repository-code: "https://github.com/grezniczek/redcap-watermarked-signatures"
+url: "https://github.com/grezniczek/redcap-watermarked-signatures"
+
+version: "1.0.0"
+date-released: "2026-xx-xx"
+doi: "10.5281/zenodo.xxx"
+
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.xxx"
+    description: "Archived software release"
