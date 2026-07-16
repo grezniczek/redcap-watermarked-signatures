@@ -5,6 +5,14 @@
 **Status:** Architecture agreed sufficiently for an initial implementation  
 **Primary purpose:** Reduce the risk that a signature image captured in a REDCap signature field is reused outside the context in which it was originally captured.
 
+
+## 0. Tooling hints
+
+node is available here:
+```bash
+/home/gr/.nvm/versions/node/v22.22.3/bin/node 
+```
+
 ---
 
 ## 1. Objective
