@@ -31,6 +31,37 @@ class LogRepository
         return $this->findEventByEdocId('sigwm_upload', $edocId);
     }
 
+    public function findUploadByCaptureReference($captureReference, $projectId = null)
+    {
+        $parameters = array('sigwm_upload', (string) $captureReference);
+        if ($projectId === null) {
+            // Mention project_id explicitly to permit an administrator lookup
+            // across all projects using this module.
+            $projectClause = 'project_id >= 0';
+        } else {
+            $projectClause = 'project_id = ?';
+            $parameters[] = (int) $projectId;
+        }
+
+        $result = $this->queryLogsPrimary(
+            "select log_id, payload_json, project_id where message = ? and capture_ref = ? and {$projectClause} order by log_id asc limit 2",
+            $parameters
+        );
+        $row = $result ? $result->fetch_assoc() : null;
+        if (!$row) {
+            return null;
+        }
+        if ($result->fetch_assoc()) {
+            throw new \RuntimeException('Multiple upload events have the same capture reference.');
+        }
+
+        $payload = $this->decodeEventRow($row, 'sigwm_upload');
+        if (!isset($payload['capture_ref']) || !hash_equals((string) $captureReference, (string) $payload['capture_ref'])) {
+            throw new \RuntimeException('The sigwm_upload log payload has a mismatched capture reference.');
+        }
+        return $payload;
+    }
+
     public function findBindingByEdocId($edocId)
     {
         return $this->findEventByEdocId('sigwm_bind', $edocId);
@@ -85,22 +116,32 @@ class LogRepository
             // Mentioning project_id explicitly suppresses the framework's
             // automatic current-project clause. The one-edoc-one-binding
             // invariant applies across every project using this module.
-            'select log_id, payload_json, project_id where message = ? and edoc_id = ? and project_id >= 0 order by log_id asc limit 1',
+            'select log_id, payload_json, project_id where message = ? and edoc_id = ? and project_id >= 0 order by log_id asc limit 2',
             array($message, (int) $edocId)
         );
         $row = $result ? $result->fetch_assoc() : null;
         if (!$row) {
             return null;
         }
+        if ($result->fetch_assoc()) {
+            throw new \RuntimeException("Multiple {$message} events have the same edoc ID.");
+        }
 
+        $payload = $this->decodeEventRow($row, $message);
+        if (!isset($payload['edoc_id']) || (int) $payload['edoc_id'] !== (int) $edocId) {
+            throw new \RuntimeException("The {$message} log payload has a mismatched edoc ID.");
+        }
+        return $payload;
+    }
+
+    private function decodeEventRow($row, $message)
+    {
         $payload = json_decode($row['payload_json'] ?? '', true);
         if (!is_array($payload) || json_last_error() !== JSON_ERROR_NONE) {
             throw new \RuntimeException("The {$message} log payload is invalid.");
         }
-        if (!isset($payload['edoc_id']) || (int) $payload['edoc_id'] !== (int) $edocId) {
-            throw new \RuntimeException("The {$message} log payload has a mismatched edoc ID.");
-        }
         $payload['_log_id'] = (int) $row['log_id'];
+        $payload['_project_id'] = isset($row['project_id']) ? (int) $row['project_id'] : null;
         return $payload;
     }
 

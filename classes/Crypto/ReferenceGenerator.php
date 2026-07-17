@@ -14,6 +14,12 @@ class ReferenceGenerator
         return self::generate('S', 13);
     }
 
+    public static function isCaptureReference($value)
+    {
+        return is_string($value)
+            && preg_match('/^S-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/D', $value) === 1;
+    }
+
     public static function nonce()
     {
         return Base64Url::encode(random_bytes(18));

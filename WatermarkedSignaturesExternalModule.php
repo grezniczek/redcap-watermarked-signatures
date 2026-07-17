@@ -27,6 +27,9 @@ require_once "classes/Crypto/BindingMac.php";
 require_once "classes/Context/SavedContext.php";
 require_once "classes/Storage/LogRepository.php";
 require_once "classes/Watermark/Renderer.php";
+require_once "classes/Verification/RedcapEdocReader.php";
+require_once "classes/Verification/RedcapCurrentValueReader.php";
+require_once "classes/Verification/VerificationService.php";
 
 class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExternalModule
 {

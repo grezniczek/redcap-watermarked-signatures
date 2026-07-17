@@ -949,6 +949,14 @@ The edoc remains the sole image storage.
 
 Two verification scopes are desirable.
 
+The shared backend must accept only a complete exact capture reference and
+return separate binding, integrity, and current-field conclusions. It must not
+serve as an authorization layer: project and administrator callers enforce
+their respective REDCap permissions before displaying record, actor, or
+technical details. The first implementation uses the statuses
+`invalid_reference`, `unknown`, `unbound`, `invalid`, `incomplete`,
+`valid_current`, and `valid_historical`.
+
 ## 21.1 Project-scoped verification
 
 Accessible only to users with appropriate project rights.
