@@ -5,10 +5,13 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule;
 use Exception;
 use Throwable;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\Anchor;
+use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\BindingMac;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\CanonicalJson;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\EnvelopeSigner;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\KeyDerivation;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
+use DE\RUB\WatermarkedSignaturesExternalModule\Context\SavedContext;
+use DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository;
 use DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer;
 
 require_once "classes/ActionTagHelper.php";
@@ -20,6 +23,9 @@ require_once "classes/Crypto/KeyDerivation.php";
 require_once "classes/Crypto/EnvelopeSigner.php";
 require_once "classes/Crypto/ReferenceGenerator.php";
 require_once "classes/Crypto/Anchor.php";
+require_once "classes/Crypto/BindingMac.php";
+require_once "classes/Context/SavedContext.php";
+require_once "classes/Storage/LogRepository.php";
 require_once "classes/Watermark/Renderer.php";
 
 class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExternalModule
@@ -76,6 +82,26 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         $this->init_config();
     }
 
+    function redcap_save_record($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance)
+    {
+        $this->init_proj($project_id);
+        $this->init_config();
+
+        try {
+            $this->bind_saved_signatures($record, $instrument, $event_id, $repeat_instance);
+        } catch (Throwable $exception) {
+            // The record save has already succeeded. Preserve REDCap data and
+            // surface the binding failure through the append-only technical log.
+            $this->safe_log_event("sigwm_error_save_binding", array(
+                "record" => (string) $record,
+                "event_id" => (int) $event_id,
+                "instrument" => (string) $instrument,
+                "repeat_instance" => (int) $repeat_instance,
+                "technical_message" => substr($exception->getMessage(), 0, 1000)
+            ));
+        }
+    }
+
     function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id)
     {
         $this->init_proj($project_id);
@@ -90,6 +116,151 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 
     #region Private Helpers
+
+    private function bind_saved_signatures($record, $instrument, $eventId, $repeatInstance)
+    {
+        $fields = $this->get_configured_signature_fields($instrument);
+        if (empty($fields)) {
+            return;
+        }
+
+        $savedContext = new SavedContext(
+            $this->proj,
+            $this->project_id,
+            $record,
+            $instrument,
+            $eventId,
+            $repeatInstance
+        );
+        $data = \REDCap::getData(array(
+            "project_id" => (int) $this->project_id,
+            "return_format" => "array",
+            "records" => array((string) $record),
+            "fields" => $fields,
+            "events" => array((int) $eventId)
+        ));
+        $persistedValues = $savedContext->extractFieldValues($data, $fields);
+        $bindingMac = new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO));
+        $repository = new LogRepository($this, $bindingMac);
+
+        foreach ($persistedValues as $field => $value) {
+            if ($value === null || $value === "") {
+                continue;
+            }
+            if (!is_scalar($value) || !ctype_digit((string) $value) || (int) $value < 1) {
+                $this->log_binding_error(
+                    "sigwm_error_invalid_edoc_value",
+                    $record,
+                    $field,
+                    $value,
+                    "The persisted signature value is not a valid edoc ID."
+                );
+                continue;
+            }
+
+            $edocId = (int) $value;
+            try {
+                $upload = $repository->findUploadByEdocId($edocId);
+                if ($upload === null) {
+                    // Existing/pre-module signatures are explicitly outside scope.
+                    continue;
+                }
+
+                try {
+                    $this->validate_upload_for_saved_context($upload, $savedContext, $field, $edocId);
+                } catch (\UnexpectedValueException $exception) {
+                    $this->log_binding_error(
+                        "sigwm_error_scope_mismatch",
+                        $record,
+                        $field,
+                        $edocId,
+                        $exception->getMessage()
+                    );
+                    continue;
+                }
+                $binding = array_merge(
+                    array(
+                        "v" => 1,
+                        "capture_ref" => $upload["capture_ref"],
+                        "context_ref" => $upload["context_ref"],
+                        "record_ref" => $upload["record_ref"] ?? null,
+                        "edoc_id" => $edocId,
+                        "file_sha256" => $upload["file_sha256"],
+                        "watermark_version" => (int) $upload["watermark_version"]
+                    ),
+                    $savedContext->bindingValues($field),
+                    array("bound_at" => $this->utc_now())
+                );
+                $repository->bindOnce($binding);
+            } catch (Throwable $exception) {
+                $this->log_binding_error(
+                    "sigwm_error_binding",
+                    $record,
+                    $field,
+                    $edocId,
+                    $exception->getMessage()
+                );
+            }
+        }
+    }
+
+    private function validate_upload_for_saved_context($upload, SavedContext $savedContext, $field, $edocId)
+    {
+        $context = $savedContext->bindingValues($field);
+        $matches = isset($upload["pid"], $upload["event_id"], $upload["instrument"], $upload["field"], $upload["edoc_id"])
+            && (int) $upload["pid"] === $context["pid"]
+            && (int) $upload["event_id"] === $context["event_id"]
+            && (string) $upload["instrument"] === $context["instrument"]
+            && (string) $upload["field"] === $context["field"]
+            && (int) $upload["edoc_id"] === (int) $edocId;
+        if (!$matches) {
+            throw new \UnexpectedValueException("Upload provenance does not match the saved signature scope.");
+        }
+        if ((int) ($upload["watermark_version"] ?? 0) !== Renderer::VERSION) {
+            throw new \UnexpectedValueException("Unsupported upload watermark version.");
+        }
+        if (!isset($upload["file_sha256"]) || !preg_match('/^[a-f0-9]{64}$/', $upload["file_sha256"])) {
+            throw new \UnexpectedValueException("Upload provenance contains an invalid file digest.");
+        }
+
+        $scope = array(
+            "v" => (int) $upload["watermark_version"],
+            "pid" => $context["pid"],
+            "event_id" => $context["event_id"],
+            "instrument" => $context["instrument"],
+            "field" => $context["field"]
+        );
+        $expectedAnchor = Anchor::create($scope, KeyDerivation::derive(KeyDerivation::ANCHOR_INFO));
+        if (!isset($upload["anchor"]) || !hash_equals($expectedAnchor, (string) $upload["anchor"])) {
+            throw new \UnexpectedValueException("Upload provenance anchor does not match the saved signature scope.");
+        }
+    }
+
+    private function log_binding_error($eventType, $record, $field, $edocId, $message)
+    {
+        $this->safe_log_event($eventType, array(
+            "record" => (string) $record,
+            "field" => (string) $field,
+            "edoc_id" => is_scalar($edocId) ? (string) $edocId : "",
+            "technical_message" => substr((string) $message, 0, 1000)
+        ));
+    }
+
+    private function safe_log_event($eventType, $parameters)
+    {
+        try {
+            return $this->log($eventType, $parameters);
+        } catch (Throwable $exception) {
+            error_log("Watermarked Signatures logging failed ({$eventType}): " . $exception->getMessage());
+            return null;
+        }
+    }
+
+    private function utc_now()
+    {
+        $now = new \DateTimeImmutable("now", new \DateTimeZone("UTC"));
+        return $now->format("Y-m-d\\TH:i:s.v\\Z");
+    }
 
     private function inject_capture_envelopes($instrument, $event_id)
     {
@@ -294,6 +465,12 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             }
             return $output;
         });
+
+        // The EM framework wraps each hook invocation in its own output buffer
+        // and unconditionally closes the topmost buffer when the hook returns.
+        // Leave this inert guard on top so the provenance buffer above remains
+        // active until file_upload.php prints REDCap's stopUpload() response.
+        ob_start();
     }
 
     public function append_upload_provenance($event)

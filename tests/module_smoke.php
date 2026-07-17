@@ -18,6 +18,29 @@ namespace ExternalModules {
             return count($this->logs);
         }
 
+        public function query($sql, $parameters = array())
+        {
+            if (strpos($sql, 'GET_LOCK') !== false || strpos($sql, 'RELEASE_LOCK') !== false) {
+                return new \FakeModuleResult(array(1));
+            }
+            throw new \RuntimeException('Unexpected module query in smoke test.');
+        }
+
+        public function queryLogs($sql, $parameters = array())
+        {
+            list($message, $edocId) = $parameters;
+            foreach ($this->logs as $index => $log) {
+                if ($log[0] === $message && (int) ($log[1]['edoc_id'] ?? 0) === (int) $edocId) {
+                    return new \FakeModuleResult(array(
+                        'log_id' => $index + 1,
+                        'payload_json' => $log[1]['payload_json'],
+                        'project_id' => 123
+                    ));
+                }
+            }
+            return new \FakeModuleResult(null);
+        }
+
         public function exitAfterHook()
         {
             $this->exitRequested = true;
@@ -31,11 +54,45 @@ namespace ExternalModules {
 }
 
 namespace {
+    class FakeModuleResult
+    {
+        private $row;
+
+        public function __construct($row)
+        {
+            $this->row = $row;
+        }
+
+        public function fetch_assoc()
+        {
+            $row = $this->row;
+            $this->row = null;
+            return $row;
+        }
+
+        public function fetch_row()
+        {
+            $row = $this->row;
+            $this->row = null;
+            return $row;
+        }
+    }
+
     class Design
     {
         public static function isDraftPreview()
         {
             return false;
+        }
+    }
+
+    class REDCap
+    {
+        public static $data = array();
+
+        public static function getData($parameters)
+        {
+            return self::$data;
         }
     }
 
@@ -64,6 +121,16 @@ namespace {
         public function validateFormEvent($instrument, $eventId)
         {
             return $instrument === 'consent' && $eventId === 417;
+        }
+
+        public function isRepeatingEvent($eventId)
+        {
+            return false;
+        }
+
+        public function isRepeatingForm($eventId, $instrument)
+        {
+            return false;
         }
     }
 
@@ -136,9 +203,15 @@ namespace {
         'myfile_base64' => base64_encode($originalPng)
     );
 
+    // Reproduce the framework's hook output wrapper. It closes the topmost
+    // buffer after the module returns, which must consume only our guard.
+    ob_start();
     ob_start();
     invokePrivate($module, 'intercept_signature_upload');
+    echo ob_get_clean();
+    moduleAssert(count($module->logs) === 0, 'Provenance was recorded before REDCap returned an edoc ID.');
     echo "<script>window.parent.window.stopUpload(1,'participant_signature','98137','signature.png','',417,'','','',1,true);</script>";
+    ob_end_flush();
     ob_end_flush();
     $response = ob_get_clean();
 
@@ -148,6 +221,19 @@ namespace {
     moduleAssert(count($module->logs) === 1 && $module->logs[0][0] === 'sigwm_upload', 'Upload provenance was not logged.');
     moduleAssert($module->logs[0][1]['edoc_id'] === 98137, 'The returned edoc ID was not captured.');
     moduleAssert(strpos($response, "stopUpload(1,'participant_signature','98137'") !== false, 'The iframe response was altered.');
+
+    REDCap::$data = array(
+        'R-001' => array(417 => array('participant_signature' => '98137'))
+    );
+    $module->redcap_save_record(123, 'R-001', 'consent', 417, null, null, null, 1);
+    moduleAssert(count($module->logs) === 2 && $module->logs[1][0] === 'sigwm_bind', 'Persisted signature was not bound after save.');
+    $storedBinding = json_decode($module->logs[1][1]['payload_json'], true);
+    moduleAssert($storedBinding['record_id'] === 'R-001', 'Binding did not contain the authoritative record ID.');
+    moduleAssert($storedBinding['repeat_instance'] === null, 'Classic binding did not normalize repeat context.');
+    moduleAssert(isset($storedBinding['binding_mac']), 'Binding MAC was not stored.');
+
+    $module->redcap_save_record(123, 'R-001', 'consent', 417, null, null, null, 1);
+    moduleAssert(count($module->logs) === 2, 'Repeated save appended a duplicate binding.');
 
     $scopeMismatchModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($scopeMismatchModule, 'proj', new FakeProject());
