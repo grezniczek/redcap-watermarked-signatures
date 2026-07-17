@@ -264,6 +264,28 @@ Requirements:
 
 The first implementation may defer record pseudonyms if necessary, but the internal data model and binding format should allow them without redesign.
 
+### First-release decision: do not implement record pseudonyms
+
+Record pseudonyms are deliberately out of scope for the first release. They
+would provide a stable opaque identifier for correlating several signatures
+from the same record without disclosing the REDCap record ID. That is not
+needed by the authenticated verification facilities implemented here:
+
+- the image never visibly contains the record ID;
+- the capture reference provides exact image lookup;
+- the field-scoped context reference identifies the captured context without
+  revealing its components;
+- the MAC-protected binding retains the historical record context; and
+- REDCap's current indexed log record and the append-only rename history
+  resolve current identity and record renames for authorized users.
+
+A stable visible pseudonym would also make otherwise separate signatures
+linkable to the same record, which is an unnecessary privacy cost for the
+current workflow. The binding format retains `record_ref: null` as an explicit
+extension point. Reconsider pseudonyms only for a concrete future workflow
+that requires cross-signature record correlation without revealing the record
+ID, such as an external or semi-public verification service.
+
 ---
 
 ## 7. Per-field signed envelope
@@ -1248,7 +1270,9 @@ Deliverables:
 Deliverables:
 
 - purge policy for unbound upload provenance;
-- record pseudonyms and rename tracking if not implemented earlier;
+- record-rename tracking if not implemented earlier; record pseudonyms are
+  explicitly out of scope for the first release unless a future external
+  correlation workflow requires them;
 - structured error reporting;
 - configuration UI;
 - compatibility testing across REDCap versions;
