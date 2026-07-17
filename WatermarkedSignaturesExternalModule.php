@@ -282,6 +282,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                 "instrument" => (string) $instrument,
                 "field" => (string) $field,
                 "context_ref" => ReferenceGenerator::contextReference(),
+                // Do not capture REDCap's tentative new-record value. The
+                // authoritative record ID is attached only after a successful
+                // save. Stable record pseudonyms are intentionally deferred.
                 "record_ref" => null,
                 "issued_at" => $now,
                 "expires_at" => $now + self::ENVELOPE_TTL_SECONDS,

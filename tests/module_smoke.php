@@ -219,6 +219,41 @@ namespace {
         return $payloads;
     }
 
+    function injectedConfig($html)
+    {
+        moduleAssert(
+            preg_match('/window\.REDCapSignatureWatermark=(\{.*?\});<\/script>/s', $html, $matches) === 1,
+            'Signature watermark configuration was not injected.'
+        );
+        $config = json_decode($matches[1], true);
+        moduleAssert(is_array($config), 'Injected signature watermark configuration was invalid.');
+        return $config;
+    }
+
+    function captureSignatureUpload($module, $envelope, $originalPng, $edocId, $field = 'participant_signature')
+    {
+        $_SERVER['REQUEST_METHOD'] = 'POST';
+        $_GET = array('event_id' => '417', 'instance' => '1', 'page' => 'consent');
+        $_POST = array(
+            'field_name' => $field . '-linknew',
+            'sigwm_envelope' => $envelope,
+            'myfile_base64' => base64_encode($originalPng)
+        );
+
+        ob_start();
+        ob_start();
+        invokePrivate($module, 'intercept_signature_upload');
+        echo ob_get_clean();
+        echo "<script>window.parent.window.stopUpload(1,'{$field}','{$edocId}','signature.png','',417,'','','',1,true);</script>";
+        ob_end_flush();
+        ob_end_flush();
+        ob_get_clean();
+
+        $uploads = payloadsForMessage($module, 'sigwm_upload');
+        moduleAssert(!empty($uploads), 'Deferred-record signature upload did not create provenance.');
+        return $uploads[count($uploads) - 1];
+    }
+
     $GLOBALS['salt'] = 'redcap-test-installation-salt';
     $GLOBALS['salt2'] = 'redcap-test-installation-salt-2';
 
@@ -270,6 +305,75 @@ namespace {
     moduleAssert($participantEnvelope['field'] === 'participant_signature', 'Participant envelope was scoped to the wrong field.');
     moduleAssert($witnessEnvelope['field'] === 'witness_signature', 'Witness envelope was scoped to the wrong field.');
     moduleAssert($participantEnvelope['context_ref'] !== $witnessEnvelope['context_ref'], 'Signature fields shared a context reference.');
+
+    $autoNumberModule = new WatermarkedSignaturesExternalModule();
+    $autoNumberModule->framework = new FakeFramework();
+    setPrivateProperty($autoNumberModule, 'proj', new FakeProject());
+    setPrivateProperty($autoNumberModule, 'project_id', 123);
+    ob_start();
+    $autoNumberModule->redcap_data_entry_form(123, null, 'consent', 417, null, 1);
+    $autoNumberHtml = ob_get_clean();
+    $autoNumberConfig = injectedConfig($autoNumberHtml);
+    $autoNumberEnvelope = $signer->verify($autoNumberConfig['envelopes']['participant_signature']);
+    moduleAssert($autoNumberEnvelope['record_ref'] === null, 'Tentative auto-number record leaked into the capture envelope.');
+    moduleAssert(!array_key_exists('record_id', $autoNumberEnvelope), 'Capture envelope contained a pre-save record ID.');
+    $autoNumberUpload = captureSignatureUpload(
+        $autoNumberModule,
+        $autoNumberConfig['envelopes']['participant_signature'],
+        $originalPng,
+        99501
+    );
+    moduleAssert(count(payloadsForMessage($autoNumberModule, 'sigwm_bind')) === 0, 'Auto-number upload bound before record creation.');
+    REDCap::$data = array(
+        '1007' => array(417 => array('participant_signature' => '99501'))
+    );
+    $autoNumberModule->redcap_save_record(123, '1007', 'consent', 417, null, null, null, 1);
+    $autoNumberBinding = payloadsForMessage($autoNumberModule, 'sigwm_bind')[0];
+    moduleAssert($autoNumberBinding['record_id'] === '1007', 'Auto-number binding did not use REDCap\'s authoritative record ID.');
+    moduleAssert($autoNumberBinding['context_ref'] === $autoNumberUpload['context_ref'], 'Auto-number binding lost its pre-save context reference.');
+    moduleAssert($autoNumberBinding['record_ref'] === null, 'Deferred record pseudonym was not represented explicitly as null.');
+
+    $surveyModule = new WatermarkedSignaturesExternalModule();
+    $surveyModule->framework = new FakeFramework();
+    setPrivateProperty($surveyModule, 'proj', new FakeProject());
+    setPrivateProperty($surveyModule, 'project_id', 123);
+    ob_start();
+    $surveyModule->redcap_survey_page(123, null, 'consent', 417, null, 'public-survey-hash', null, 1);
+    $surveyHtml = ob_get_clean();
+    $surveyConfig = injectedConfig($surveyHtml);
+    $surveyEnvelope = $signer->verify($surveyConfig['envelopes']['participant_signature']);
+    moduleAssert($surveyEnvelope['record_ref'] === null, 'First-page survey envelope assumed a record ID.');
+    moduleAssert(!array_key_exists('record_id', $surveyEnvelope), 'First-page survey envelope exposed a tentative record ID.');
+    $surveyUpload = captureSignatureUpload(
+        $surveyModule,
+        $surveyConfig['envelopes']['participant_signature'],
+        $originalPng,
+        99502
+    );
+    moduleAssert(count(payloadsForMessage($surveyModule, 'sigwm_bind')) === 0, 'First-page survey upload bound before survey save.');
+    REDCap::$data = array(
+        'SURVEY-2001' => array(417 => array('participant_signature' => '99502'))
+    );
+    $surveyModule->redcap_save_record(123, 'SURVEY-2001', 'consent', 417, null, 'public-survey-hash', 7001, 1);
+    $surveyBinding = payloadsForMessage($surveyModule, 'sigwm_bind')[0];
+    moduleAssert($surveyBinding['record_id'] === 'SURVEY-2001', 'First-page survey binding did not use the created record ID.');
+    moduleAssert($surveyBinding['context_ref'] === $surveyUpload['context_ref'], 'First-page survey binding lost its pre-save context reference.');
+
+    $abandonedSurveyModule = new WatermarkedSignaturesExternalModule();
+    $abandonedSurveyModule->framework = new FakeFramework();
+    setPrivateProperty($abandonedSurveyModule, 'proj', new FakeProject());
+    setPrivateProperty($abandonedSurveyModule, 'project_id', 123);
+    ob_start();
+    $abandonedSurveyModule->redcap_survey_page(123, null, 'consent', 417, null, 'public-survey-hash', null, 1);
+    $abandonedSurveyConfig = injectedConfig(ob_get_clean());
+    captureSignatureUpload(
+        $abandonedSurveyModule,
+        $abandonedSurveyConfig['envelopes']['participant_signature'],
+        $originalPng,
+        99503
+    );
+    moduleAssert(count(payloadsForMessage($abandonedSurveyModule, 'sigwm_upload')) === 1, 'Abandoned first-page survey lost upload provenance.');
+    moduleAssert(count(payloadsForMessage($abandonedSurveyModule, 'sigwm_bind')) === 0, 'Abandoned first-page survey created a binding.');
 
     $_SERVER['REQUEST_METHOD'] = 'POST';
     $_GET = array('event_id' => '417', 'instance' => '1');
