@@ -3,7 +3,7 @@
 namespace DE\RUB\WatermarkedSignaturesExternalModule\Watermark;
 
 /**
- * Portable GD renderer for the first watermark layout.
+ * Portable, deterministic GD renderer for the WM1 image format.
  */
 class Renderer
 {
@@ -11,13 +11,16 @@ class Renderer
     const MAX_DECODED_BYTES = 6291456;
     const MAX_DIMENSION = 4096;
     const MAX_PIXELS = 12000000;
+    const MIN_OUTPUT_WIDTH = 300;
     const FOOTER_HEIGHT = 38;
+    const FONT = 2;
 
     public function renderBase64($encodedPng, $anchor, $contextReference, $captureReference, $capturedAt)
     {
         if (!extension_loaded('gd')) {
             throw new \RuntimeException('The GD PHP extension is required to watermark signatures.');
         }
+        self::validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt);
         if (!is_string($encodedPng) || $encodedPng === '') {
             throw new \InvalidArgumentException('The submitted signature image is empty.');
         }
@@ -52,17 +55,22 @@ class Renderer
             throw new \InvalidArgumentException('The submitted signature PNG could not be decoded.');
         }
 
+        // Small signature widgets do not have enough horizontal space for the
+        // complete identifiers. Widen the normalized output instead of
+        // truncating security-relevant footer values.
+        $outputWidth = max($width, self::MIN_OUTPUT_WIDTH);
         $outputHeight = $height + self::FOOTER_HEIGHT;
-        $canvas = imagecreatetruecolor($width, $outputHeight);
+        $canvas = imagecreatetruecolor($outputWidth, $outputHeight);
         if ($canvas === false) {
             imagedestroy($source);
             throw new \RuntimeException('Could not allocate the watermark output image.');
         }
 
         $white = imagecolorallocate($canvas, 255, 255, 255);
-        imagefilledrectangle($canvas, 0, 0, $width, $outputHeight, $white);
+        imagefilledrectangle($canvas, 0, 0, $outputWidth, $outputHeight, $white);
         imagealphablending($canvas, true);
-        imagecopy($canvas, $source, 0, 0, 0, 0, $width, $height);
+        $signatureX = (int) floor(($outputWidth - $width) / 2);
+        imagecopy($canvas, $source, $signatureX, 0, 0, 0, $width, $height);
 
         // Use a light edge under a blue center. A single dark translucent color
         // becomes nearly indistinguishable where it crosses black signature
@@ -75,13 +83,13 @@ class Renderer
         $overlay = self::compact($anchor) . ' ' .
             substr(self::compact($contextReference), 0, 9) . ' ' .
             substr(self::compact($captureReference), 0, 9);
-        $font = 2;
+        $font = self::FONT;
         $textWidth = imagefontwidth($font) * strlen($overlay);
         $stepX = max(150, $textWidth + 55);
 
         for ($y = 8, $row = 0; $y < $height - 8; $y += 28, $row++) {
             $offset = ($row % 2) * (int) floor($stepX / 2);
-            for ($x = -$offset; $x < $width; $x += $stepX) {
+            for ($x = -$offset; $x < $outputWidth; $x += $stepX) {
                 imagestring($canvas, $font, $x + 1, $y + 1, $overlay, $overlayEdgeColor);
                 imagestring($canvas, $font, $x, $y, $overlay, $overlayColor);
             }
@@ -90,13 +98,13 @@ class Renderer
         $band = imagecolorallocate($canvas, 235, 241, 245);
         $line = imagecolorallocate($canvas, 75, 95, 110);
         $text = imagecolorallocate($canvas, 20, 35, 45);
-        imagefilledrectangle($canvas, 0, $height, $width, $outputHeight, $band);
-        imageline($canvas, 0, $height, $width, $height, $line);
+        imagefilledrectangle($canvas, 0, $height, $outputWidth, $outputHeight, $band);
+        imageline($canvas, 0, $height, $outputWidth, $height, $line);
 
-        $line1 = 'WM1 A:' . $anchor . ' C:' . self::withoutPrefix($contextReference);
+        $line1 = 'WM' . self::VERSION . ' A:' . $anchor . ' C:' . self::withoutPrefix($contextReference);
         $line2 = 'S:' . self::withoutPrefix($captureReference) . ' ' . $capturedAt;
-        imagestring($canvas, 2, 5, $height + 4, self::fitText($line1, $width, 2), $text);
-        imagestring($canvas, 2, 5, $height + 20, self::fitText($line2, $width, 2), $text);
+        imagestring($canvas, $font, 5, $height + 4, self::fitText($line1, $outputWidth, $font), $text);
+        imagestring($canvas, $font, 5, $height + 20, self::fitText($line2, $outputWidth, $font), $text);
 
         ob_start();
         $encoded = imagepng($canvas, null, 6);
@@ -110,6 +118,23 @@ class Renderer
         }
 
         return $output;
+    }
+
+    private static function validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt)
+    {
+        $alphabet = '[0-9A-HJKMNP-TV-Z]';
+        if (!is_string($anchor) || !preg_match('/^' . $alphabet . '{4}(?:-' . $alphabet . '{4}){3}$/D', $anchor)) {
+            throw new \InvalidArgumentException('The watermark anchor format is invalid.');
+        }
+        if (!is_string($contextReference) || !preg_match('/^C-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '$/D', $contextReference)) {
+            throw new \InvalidArgumentException('The watermark context reference format is invalid.');
+        }
+        if (!is_string($captureReference) || !preg_match('/^S-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '$/D', $captureReference)) {
+            throw new \InvalidArgumentException('The watermark capture reference format is invalid.');
+        }
+        if (!is_string($capturedAt) || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/D', $capturedAt)) {
+            throw new \InvalidArgumentException('The watermark timestamp must be UTC ISO 8601.');
+        }
     }
 
     private static function compact($value)
