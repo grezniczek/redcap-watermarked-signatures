@@ -127,6 +127,7 @@ class LogRepository
     {
         $this->module->log('sigwm_bind', array(
             'record' => $event['record_id'],
+            'anchor' => $event['anchor'],
             'capture_ref' => $event['capture_ref'],
             'context_ref' => $event['context_ref'],
             'event_id' => $event['event_id'],

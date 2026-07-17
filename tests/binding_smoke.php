@@ -159,6 +159,7 @@ bindingAssert($repeatForm->bindingValues('sig_a')['repeat_instrument'] === 'cons
 
 $binding = array(
     'v' => 1,
+    'anchor' => 'AAAA-BBBB-CCCC-DDDD',
     'capture_ref' => 'S-1111-2222-3333-4',
     'context_ref' => 'C-1111-2222-3333-4',
     'record_ref' => null,
@@ -183,11 +184,15 @@ bindingAssert($mac->verify($bindingWithMac), 'Binding MAC verification failed.')
 $tamperedBinding = $bindingWithMac;
 $tamperedBinding['record_id'] = 'R-002';
 bindingAssert(!$mac->verify($tamperedBinding), 'Binding MAC did not detect a changed record.');
+$tamperedAnchorBinding = $bindingWithMac;
+$tamperedAnchorBinding['anchor'] = 'EEEE-FFFF-GGGG-HHHH';
+bindingAssert(!$mac->verify($tamperedAnchorBinding), 'Binding MAC did not detect a changed anchor.');
 
 $module = new BindingTestModule();
 $GLOBALS['bindingPrimaryModule'] = $module;
 $repository = new LogRepository($module, $mac);
 bindingAssert($repository->bindOnce($binding) === LogRepository::RESULT_BOUND, 'First binding was not appended.');
+bindingAssert($module->events[0]['parameters']['anchor'] === $binding['anchor'], 'Binding log did not expose the anchor parameter.');
 bindingAssert($repository->bindOnce($binding) === LogRepository::RESULT_IDEMPOTENT, 'Identical binding was not idempotent.');
 bindingAssert(count(array_filter($module->events, function ($event) { return $event['message'] === 'sigwm_bind'; })) === 1, 'Idempotent binding appended a duplicate.');
 

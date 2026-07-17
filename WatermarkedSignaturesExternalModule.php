@@ -181,6 +181,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                 $binding = array_merge(
                     array(
                         "v" => 1,
+                        "anchor" => $upload["anchor"],
                         "capture_ref" => $upload["capture_ref"],
                         "context_ref" => $upload["context_ref"],
                         "record_ref" => $upload["record_ref"] ?? null,

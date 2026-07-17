@@ -309,6 +309,8 @@ namespace {
     moduleAssert(count($module->logs) === 2 && $module->logs[1][0] === 'sigwm_bind', 'Persisted signature was not bound after save.');
     $storedBinding = json_decode($module->logs[1][1]['payload_json'], true);
     moduleAssert($storedBinding['record_id'] === 'R-001', 'Binding did not contain the authoritative record ID.');
+    moduleAssert($storedBinding['anchor'] === $uploadProvenance['anchor'], 'Binding did not retain the visible anchor.');
+    moduleAssert($module->logs[1][1]['anchor'] === $uploadProvenance['anchor'], 'Binding anchor is not directly inspectable in the log.');
     moduleAssert($storedBinding['repeat_instance'] === null, 'Classic binding did not normalize repeat context.');
     moduleAssert(isset($storedBinding['binding_mac']), 'Binding MAC was not stored.');
 

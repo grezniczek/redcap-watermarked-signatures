@@ -413,6 +413,7 @@ binding_mac = HMAC-SHA-256(
     K_binding,
     canonical(
         edoc_id,
+        anchor,
         capture_ref,
         context_ref,
         record_ref,
@@ -580,7 +581,7 @@ Example payload:
   "capture_ref": "S-5N6T-P4WC-X8Q2",
   "context_ref": "C-8D3Q-K7H2-R5NW",
   "record_ref": "R-7M4K-2C9P",
-  "anchor": "7K4M-P8Q2-X5DN-R",
+  "anchor": "7K4M-P8Q2-X5DN-R7CW",
   "pid": 123,
   "event_id": 417,
   "instrument": "consent",
@@ -702,6 +703,7 @@ Example payload:
 ```json
 {
   "v": 1,
+  "anchor": "7K4M-P8Q2-X5DN-R7CW",
   "capture_ref": "S-5N6T-P4WC-X8Q2",
   "context_ref": "C-8D3Q-K7H2-R5NW",
   "record_ref": "R-7M4K-2C9P",

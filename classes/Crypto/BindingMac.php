@@ -12,6 +12,7 @@ class BindingMac
     private static $definingFields = array(
         'v',
         'edoc_id',
+        'anchor',
         'capture_ref',
         'context_ref',
         'record_ref',
