@@ -143,9 +143,9 @@ adminUiAssert($presented['details']['record_id'] === '12', 'Administrator detail
 adminUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive verification values escaped administrator details.');
 adminUiAssert($repository->requestedRenameProjectId === 461 && $repository->requestedRenameRecordId === '12', 'Administrator history did not use the current binding record.');
 adminUiAssert(count($presented['diagnostics']) === 2, 'Administrator diagnostic history was not presented.');
-adminUiAssert(!isset($presented['diagnostics'][0]['payload_json']) && !isset($presented['diagnostics'][0]['binding_mac']), 'Raw diagnostic payload values escaped administrator history.');
-adminUiAssert($presented['diagnostics'][1]['message'] === 'sigwm_record_rename', 'Administrator history did not include the record-rename event.');
-adminUiAssert($presented['diagnostics'][1]['record'] === '12' && $presented['diagnostics'][1]['previous_record_id'] === '9', 'Administrator history did not preserve record-rename details.');
+adminUiAssert($presented['diagnostics'][0]['message'] === 'sigwm_record_rename', 'Administrator history was not sorted with the newest event first.');
+adminUiAssert(!isset($presented['diagnostics'][1]['payload_json']) && !isset($presented['diagnostics'][1]['binding_mac']), 'Raw diagnostic payload values escaped administrator history.');
+adminUiAssert($presented['diagnostics'][0]['record'] === '12' && $presented['diagnostics'][0]['previous_record_id'] === '9', 'Administrator history did not preserve record-rename details.');
 $byEdocId = $controller->verifyEdocId('1903');
 adminUiAssert($byEdocId['lookup_type'] === 'edoc_id' && $byEdocId['lookup_value'] === 1903, 'Administrator edoc lookup was not identified as an edoc lookup.');
 adminUiAssert($service->lastReference === $captureReference && $service->lastProjectId === null, 'Administrator edoc lookup was not verified globally.');
@@ -178,6 +178,6 @@ adminUiAssert(strpos($pageSource, "result.remove()") !== false, 'Administrator s
 adminUiAssert(strpos($pageSource, 'Technical log history') !== false, 'Administrator technical history is not rendered.');
 adminUiAssert(strpos($pageSource, 'JSON_PRETTY_PRINT') !== false, 'Administrator diagnostic details are not pretty-printed.');
 adminUiAssert(strpos($pageSource, '>Log event</th>') !== false, 'Administrator diagnostic event row is missing.');
-adminUiAssert(strpos($pageSource, 'border-top: 2px solid #444') !== false, 'Administrator diagnostic entries are not visibly separated.');
+adminUiAssert(strpos($pageSource, 'border-top: 1px solid #444') !== false, 'Administrator diagnostic entries are not visibly separated.');
 
 echo "Watermarked Signatures administrator UI smoke tests passed.\n";

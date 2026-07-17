@@ -123,6 +123,20 @@ class AdministratorVerificationController
             return array();
         }
 
+        // Present a forensic history with the most recent event first. The
+        // indexed timestamp uses sortable REDCap SQL datetime formatting; the
+        // log ID makes events from the same second deterministic.
+        usort($diagnostics, function ($left, $right) {
+            $leftTimestamp = is_array($left) ? (string) ($left['timestamp'] ?? '') : '';
+            $rightTimestamp = is_array($right) ? (string) ($right['timestamp'] ?? '') : '';
+            if ($leftTimestamp !== $rightTimestamp) {
+                return strcmp($rightTimestamp, $leftTimestamp);
+            }
+            $leftLogId = is_array($left) ? (int) ($left['log_id'] ?? 0) : 0;
+            $rightLogId = is_array($right) ? (int) ($right['log_id'] ?? 0) : 0;
+            return $rightLogId <=> $leftLogId;
+        });
+
         $presented = array();
         foreach ($diagnostics as $diagnostic) {
             if (!is_array($diagnostic)) {
@@ -160,12 +174,7 @@ class AdministratorVerificationController
         if (!is_array($renames) || empty($renames)) {
             return $diagnostics;
         }
-
-        $diagnostics = array_merge($diagnostics, $renames);
-        usort($diagnostics, function ($left, $right) {
-            return ((int) ($left['log_id'] ?? 0)) <=> ((int) ($right['log_id'] ?? 0));
-        });
-        return $diagnostics;
+        return array_merge($diagnostics, $renames);
     }
 
     private function copy(&$target, $source, $fields)
