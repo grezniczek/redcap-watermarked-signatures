@@ -161,7 +161,12 @@ $diagnosticSummaryLabels = array(
 
         <?php if (!empty($result['details'])): ?>
             <div class="card mb-4">
-                <div class="card-header fw-bold p-3"><?= $isAdministrator ? 'Administrator signature details' : 'Authorized signature details' ?></div>
+                <div class="card-header fw-bold p-3 d-flex align-items-center">
+                    <span><?= $isAdministrator ? 'Administrator signature details' : 'Authorized signature details' ?></span>
+                    <?php if (!empty($result['field_url'])): ?>
+                        <a class="ms-auto small" href="<?= $escape($result['field_url']) ?>">Go to field <i class="fa-solid fa-arrow-right"></i></a>
+                    <?php endif; ?>
+                </div>
                 <div class="card-body p-0">
                     <table class="table table-sm table-striped mb-0 sigwm-result-table">
                         <tbody>

@@ -36,6 +36,7 @@ require_once "classes/Watermark/Renderer.php";
 require_once "classes/Verification/AdministratorVerificationController.php";
 require_once "classes/Verification/RedcapEdocReader.php";
 require_once "classes/Verification/RedcapCurrentValueReader.php";
+require_once "classes/Verification/RedcapFieldLink.php";
 require_once "classes/Verification/VerificationService.php";
 require_once "classes/Verification/ProjectAccessPolicy.php";
 require_once "classes/Verification/ProjectVerificationController.php";

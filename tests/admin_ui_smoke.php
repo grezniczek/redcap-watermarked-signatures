@@ -3,10 +3,15 @@
 require_once __DIR__ . '/../classes/Crypto/Base32.php';
 require_once __DIR__ . '/../classes/Crypto/Base64Url.php';
 require_once __DIR__ . '/../classes/Crypto/ReferenceGenerator.php';
+require_once __DIR__ . '/../classes/Verification/RedcapFieldLink.php';
 require_once __DIR__ . '/../classes/Verification/AdministratorVerificationController.php';
 
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController;
+
+if (!defined('APP_PATH_WEBROOT')) {
+    define('APP_PATH_WEBROOT', '/redcap/');
+}
 
 function adminUiAssert($condition, $message)
 {
@@ -142,6 +147,7 @@ adminUiAssert($presented['details']['upload_project_id'] === 461, 'Upload projec
 adminUiAssert($presented['details']['binding_log_id'] === 88, 'Binding log ID was not presented.');
 adminUiAssert($presented['details']['record_id'] === '12', 'Administrator details did not present the current record ID.');
 adminUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Administrator details did not present the public project reference.');
+adminUiAssert($presented['field_url'] === '/redcap/DataEntry/index.php?pid=461&id=12&event_id=1423&page=form_1&instance=1', 'Administrator verification did not create the data-entry field URL.');
 adminUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive verification values escaped administrator details.');
 adminUiAssert($repository->requestedRenameProjectId === 461 && $repository->requestedRenameRecordId === '12', 'Administrator history did not use the current binding record.');
 adminUiAssert(count($presented['diagnostics']) === 2, 'Administrator diagnostic history was not presented.');
@@ -181,5 +187,6 @@ adminUiAssert(strpos($pageSource, 'Technical log history') !== false, 'Administr
 adminUiAssert(strpos($pageSource, 'JSON_PRETTY_PRINT') !== false, 'Administrator diagnostic details are not pretty-printed.');
 adminUiAssert(strpos($pageSource, '>Log event</th>') !== false, 'Administrator diagnostic event row is missing.');
 adminUiAssert(strpos($pageSource, 'border-top: 1px solid #444') !== false, 'Administrator diagnostic entries are not visibly separated.');
+adminUiAssert(strpos($pageSource, 'Go to field') !== false, 'Administrator details do not include a field-navigation link.');
 
 echo "Watermarked Signatures administrator UI smoke tests passed.\n";

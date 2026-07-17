@@ -108,7 +108,8 @@ class ProjectVerificationController
             'checks' => isset($result['checks']) && is_array($result['checks']) ? $result['checks'] : array(),
             'issues' => isset($result['issues']) && is_array($result['issues']) ? $result['issues'] : array(),
             'edoc' => isset($result['edoc']) && is_array($result['edoc']) ? $result['edoc'] : null,
-            'details' => $details
+            'details' => $details,
+            'field_url' => RedcapFieldLink::create($binding, $result['current_record_id'] ?? null)
         );
     }
 
@@ -132,7 +133,8 @@ class ProjectVerificationController
             'checks' => array(),
             'issues' => array('not_available_in_authorized_scope'),
             'edoc' => null,
-            'details' => array()
+            'details' => array(),
+            'field_url' => null
         );
     }
 
@@ -147,7 +149,8 @@ class ProjectVerificationController
             'checks' => array(),
             'issues' => array($issue),
             'edoc' => null,
-            'details' => array()
+            'details' => array(),
+            'field_url' => null
         );
     }
 }

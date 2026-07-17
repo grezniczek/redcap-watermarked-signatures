@@ -4,11 +4,17 @@ require_once __DIR__ . '/../classes/Crypto/Base32.php';
 require_once __DIR__ . '/../classes/Crypto/Base64Url.php';
 require_once __DIR__ . '/../classes/Crypto/ReferenceGenerator.php';
 require_once __DIR__ . '/../classes/Verification/ProjectAccessPolicy.php';
+require_once __DIR__ . '/../classes/Verification/RedcapFieldLink.php';
 require_once __DIR__ . '/../classes/Verification/ProjectVerificationController.php';
 
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectAccessPolicy;
+use DE\RUB\WatermarkedSignaturesExternalModule\Verification\RedcapFieldLink;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectVerificationController;
+
+if (!defined('APP_PATH_WEBROOT')) {
+    define('APP_PATH_WEBROOT', '/redcap/');
+}
 
 class UserRights
 {
@@ -189,6 +195,7 @@ $presented = $controller->verify($captureReference);
 projectUiAssert($presented['status'] === 'valid_current' && $service->calls === 1, 'Authorized verification was not delegated to the service.');
 projectUiAssert($presented['details']['record_id'] === 'R-002', 'Authorized record details did not show the current record ID.');
 projectUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Authorized details did not show the public project reference.');
+projectUiAssert($presented['field_url'] === '/redcap/DataEntry/index.php?pid=123&id=R-002&event_id=417&page=consent&instance=1', 'Project verification did not create the data-entry field URL.');
 projectUiAssert(!isset($presented['upload']) && !isset($presented['binding']), 'Raw verification payload escaped the project presenter.');
 projectUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive technical values escaped the allowlist.');
 $printedReference = substr($captureReference, 2);
@@ -207,6 +214,17 @@ $otherDagPolicy = new ProjectAccessPolicy(123, false, array(
 ), function ($record) { return $record === 'R-002' ? 8 : 7; });
 $otherDagController = new ProjectVerificationController(123, $repository, $mac, $service, $otherDagPolicy);
 projectUiAssert($otherDagController->verify($captureReference)['status'] === 'valid_current', 'Current record ID was not used for DAG authorization.');
+
+projectUiAssert(
+    RedcapFieldLink::create(array(
+        'pid' => 123,
+        'event_id' => 417,
+        'instrument' => 'consent',
+        'repeat_type' => 'instrument',
+        'repeat_instance' => 3
+    ), 'R-002') === '/redcap/DataEntry/index.php?pid=123&id=R-002&event_id=417&page=consent&instance=3',
+    'Repeating field URL did not include the repeat instance.'
+);
 
 $repository->binding = null;
 $dagUnboundController = new ProjectVerificationController(123, $repository, $mac, $service, $dagPolicy);
@@ -246,5 +264,6 @@ projectUiAssert(strpos($pageSource, '<h1 class="projhdr">') !== false, 'Project 
 projectUiAssert(strpos($pageSource, "captureReference.addEventListener('search'") !== false, 'Verification search clear handler is missing.');
 projectUiAssert(strpos($pageSource, 'id="sigwm-verification-result"') !== false, 'Verification result wrapper is missing.');
 projectUiAssert(strpos($pageSource, "result.remove()") !== false, 'Verification search clear handler does not clear the result.');
+projectUiAssert(strpos($pageSource, 'Go to field') !== false, 'Verification details do not include a field-navigation link.');
 
 echo "Watermarked Signatures project UI smoke tests passed.\n";

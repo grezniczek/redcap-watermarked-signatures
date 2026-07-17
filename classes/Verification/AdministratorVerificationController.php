@@ -112,6 +112,7 @@ class AdministratorVerificationController
             'issues' => isset($result['issues']) && is_array($result['issues']) ? $result['issues'] : array(),
             'edoc' => isset($result['edoc']) && is_array($result['edoc']) ? $result['edoc'] : null,
             'details' => $details,
+            'field_url' => RedcapFieldLink::create($binding, $result['current_record_id'] ?? null),
             'diagnostics' => $this->presentDiagnostics($diagnostics),
             'lookup_type' => $lookupType,
             'lookup_value' => $lookupValue
@@ -208,6 +209,7 @@ class AdministratorVerificationController
             'issues' => array('invalid_edoc_id'),
             'edoc' => null,
             'details' => array(),
+            'field_url' => null,
             'diagnostics' => array(),
             'lookup_type' => 'edoc_id',
             'lookup_value' => $edocId
@@ -226,6 +228,7 @@ class AdministratorVerificationController
             'issues' => array(),
             'edoc' => null,
             'details' => array(),
+            'field_url' => null,
             'diagnostics' => $this->presentDiagnostics($diagnostics),
             'lookup_type' => 'edoc_id',
             'lookup_value' => $edocId
@@ -244,6 +247,7 @@ class AdministratorVerificationController
             'issues' => array('log_integrity_error'),
             'edoc' => null,
             'details' => array(),
+            'field_url' => null,
             'diagnostics' => $this->presentDiagnostics($diagnostics),
             'lookup_type' => $lookupType,
             'lookup_value' => $lookupValue
