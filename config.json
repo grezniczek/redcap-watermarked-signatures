@@ -46,10 +46,25 @@
     ],
     "project-settings": [
         {
+            "key": "unbound-upload-retention-days",
+            "name": "Retain unbound signature-upload provenance for this many days (0 disables automatic purging)",
+            "type": "text",
+            "default": "90"
+        },
+        {
             "key": "javascript-debug",
             "name": "config_javascript_debug",
             "tt_name": true,
             "type": "checkbox"
+        }
+    ],
+    "crons": [
+        {
+            "cron_name": "purge-unbound-signature-uploads",
+            "cron_description": "Purge expired, unbound signature upload provenance",
+            "method": "cron_purge_unbound_upload_provenance",
+            "cron_frequency": 86400,
+            "cron_max_run_time": 300
         }
     ]
 }

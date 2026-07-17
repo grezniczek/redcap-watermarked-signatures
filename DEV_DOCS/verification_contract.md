@@ -32,6 +32,7 @@ The service returns:
 - `binding_state`: `unknown`, `unbound`, or `bound`;
 - `integrity`: `not_checked`, `valid`, `invalid`, or `incomplete`;
 - `current_state`: `unknown`, `current`, or `historical`;
+- `current_record_id`: the record's currently valid ID, when a binding exists;
 - the matched upload and binding payloads;
 - non-content edoc metadata;
 - individual nullable checks; and
@@ -72,11 +73,15 @@ issue; callers must also inspect `integrity`, `checks`, and `issues`.
    in the result.
 7. Look up the one-time binding by edoc ID.
 8. Validate its MAC and its immutable relationship to upload provenance.
-9. Only after the binding is trusted, read the bound REDCap field and compare
-   its current edoc value.
+9. Only after the binding is trusted, read the bound REDCap field at the current
+   record ID and compare its current edoc value.
 
 The current-value adapter handles classic event data, repeating instruments,
 and repeating events using the normalized repeat data stored in the binding.
+The binding payload's `record_id` is the immutable binding-time value; REDCap's
+indexed External Module log `record` value supplies `current_record_id` after
+record rename. The MAC therefore remains verifiable while the live lookup and
+authorized display track the record's current identity.
 
 ## Security and privacy boundary
 
@@ -108,8 +113,9 @@ record value:
 
 1. Exact project-scoped upload lookup establishes the project and instrument.
 2. The user must have form-level viewing access to that instrument.
-3. A binding must have a valid MAC before its record ID is trusted for access
-   control.
+3. A binding must have a valid MAC before its record context is trusted for
+   access control. DAG lookup uses the current indexed record ID, so it remains
+   correct after a record rename.
 4. A DAG-restricted user may view the result only when the bound record belongs
    to that same DAG.
 

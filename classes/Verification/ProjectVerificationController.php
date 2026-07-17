@@ -64,7 +64,14 @@ class ProjectVerificationController
             if (!$trustedBinding) {
                 return $this->technicalFailure($captureReference, 'binding_mac_mismatch');
             }
-            if (!$this->accessPolicy->canViewBinding($binding)) {
+            // The immutable binding payload retains the record ID at bind
+            // time. DAG authorization must use REDCap's current indexed log
+            // record after any subsequent rename.
+            $bindingForAccess = $binding;
+            if (isset($binding['_current_record_id']) && $binding['_current_record_id'] !== null && $binding['_current_record_id'] !== '') {
+                $bindingForAccess['record_id'] = (string) $binding['_current_record_id'];
+            }
+            if (!$this->accessPolicy->canViewBinding($bindingForAccess)) {
                 return $this->accessDenied($captureReference);
             }
 
@@ -85,10 +92,11 @@ class ProjectVerificationController
             'capture_username', 'captured_at', 'edoc_id', 'file_sha256'
         ));
         $this->copy($details, $binding, array(
-            'record_id', 'event_id', 'instrument', 'field', 'repeat_type',
+            'event_id', 'instrument', 'field', 'repeat_type',
             'repeat_instrument', 'repeat_instance', 'bound_at', 'save_origin',
             'save_username', 'watermark_version'
         ));
+        $details['record_id'] = $result['current_record_id'] ?? ($binding['record_id'] ?? null);
 
         return array(
             'status' => $result['status'] ?? 'incomplete',

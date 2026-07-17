@@ -16,8 +16,9 @@ class AdministratorVerificationController
     public function __construct($repository, $service)
     {
         if (!is_object($repository)
-            || !method_exists($repository, 'findDiagnosticEventsByEdocId')) {
-            throw new \InvalidArgumentException('The repository must provide findDiagnosticEventsByEdocId().');
+            || !method_exists($repository, 'findDiagnosticEventsByEdocId')
+            || !method_exists($repository, 'findRecordRenameEventsByCurrentRecord')) {
+            throw new \InvalidArgumentException('The repository must provide diagnostic and record-rename lookup methods.');
         }
         if (!is_object($service) || !method_exists($service, 'verify')) {
             throw new \InvalidArgumentException('The verification service must provide verify().');
@@ -42,7 +43,7 @@ class AdministratorVerificationController
             $diagnostics = $edocId > 0
                 ? $this->repository->findDiagnosticEventsByEdocId($edocId)
                 : array();
-            return $this->present($result, $diagnostics, 'capture_reference', $normalizedReference);
+            return $this->present($result, $this->appendRecordRenameDiagnostics($diagnostics, $result), 'capture_reference', $normalizedReference);
         } catch (Throwable $exception) {
             return $this->technicalFailure($normalizedReference, 'capture_reference', $normalizedReference);
         }
@@ -65,7 +66,8 @@ class AdministratorVerificationController
             if ($captureReference === null) {
                 return $this->technicalFailure(null, 'edoc_id', $edocId, $diagnostics);
             }
-            return $this->present($this->service->verify($captureReference, null), $diagnostics, 'edoc_id', $edocId);
+            $result = $this->service->verify($captureReference, null);
+            return $this->present($result, $this->appendRecordRenameDiagnostics($diagnostics, $result), 'edoc_id', $edocId);
         } catch (Throwable $exception) {
             return $this->technicalFailure(null, 'edoc_id', $edocId);
         }
@@ -83,10 +85,11 @@ class AdministratorVerificationController
             'watermark_version'
         ));
         $this->copy($details, $binding, array(
-            'record_id', 'event_id', 'instrument', 'field', 'repeat_type',
+            'event_id', 'instrument', 'field', 'repeat_type',
             'repeat_instrument', 'repeat_instance', 'bound_at', 'save_origin',
             'save_username'
         ));
+        $details['record_id'] = $result['current_record_id'] ?? ($binding['record_id'] ?? null);
         $this->copyMapped($details, $upload, array(
             'pid' => 'upload_project_id',
             '_project_id' => 'upload_log_project_id',
@@ -131,13 +134,38 @@ class AdministratorVerificationController
                 'message', 'edoc_id', 'capture_ref', 'context_ref', 'anchor',
                 'event_id', 'instrument', 'field', 'capture_origin',
                 'capture_username', 'save_origin', 'save_username', 'bound_at',
-                'technical_message', 'original_log_id', 'binding_log_id'
+                'technical_message', 'original_log_id', 'binding_log_id',
+                'previous_record_id', 'rename_origin', 'rename_username', 'renamed_at'
             ));
             if (!empty($entry)) {
                 $presented[] = $entry;
             }
         }
         return $presented;
+    }
+
+    private function appendRecordRenameDiagnostics($diagnostics, $result)
+    {
+        if (!is_array($diagnostics)) {
+            $diagnostics = array();
+        }
+        $binding = isset($result['binding']) && is_array($result['binding']) ? $result['binding'] : array();
+        $projectId = $binding['pid'] ?? null;
+        $currentRecordId = $result['current_record_id'] ?? null;
+        if (!is_numeric($projectId) || (int) $projectId < 1 || !is_scalar($currentRecordId) || (string) $currentRecordId === '') {
+            return $diagnostics;
+        }
+
+        $renames = $this->repository->findRecordRenameEventsByCurrentRecord((int) $projectId, (string) $currentRecordId);
+        if (!is_array($renames) || empty($renames)) {
+            return $diagnostics;
+        }
+
+        $diagnostics = array_merge($diagnostics, $renames);
+        usort($diagnostics, function ($left, $right) {
+            return ((int) ($left['log_id'] ?? 0)) <=> ((int) ($right['log_id'] ?? 0));
+        });
+        return $diagnostics;
     }
 
     private function copy(&$target, $source, $fields)

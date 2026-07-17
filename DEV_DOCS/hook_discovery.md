@@ -185,6 +185,43 @@ survey signature may legitimately be encountered during a later staff save of
 the same form. Such saves remain idempotent and preserve the original binding's
 survey origin instead of creating a false mismatch error.
 
+## Record-rename tracking
+
+REDCap 17.3.0 does not expose a dedicated External Module hook for record
+renames. The module therefore records the two authenticated data-entry rename
+paths that have a trusted server-side completion signal:
+
+- For a record-ID change submitted with a data-entry form, REDCap retains the
+  prior ID in `$_POST['__old_id__']` and calls `redcap_save_record` after the
+  rename has completed. The module compares that prior ID with the authoritative
+  hook record ID.
+- The Record Home rename dialog posts to
+  `DataEntryController:renameRecord`. Before that controller runs, the module
+  resolves the pre-rename bound record. It observes the controller's server
+  response and appends a rename event only when REDCap returns its success value
+  (`1`), then resolves REDCap's final record-ID spelling after the rename.
+
+In either path, a `sigwm_record_rename` event is appended only when an existing
+module binding moved with the record. The event is indexed by the current record
+ID and contains the old/new record IDs, origin, authenticated username, and UTC
+timestamp. It is separate from the immutable binding payload, which remains a
+record of the original signature context.
+
+REDCap also updates the External Module log table's indexed `record` column for
+all affected rows during a record rename. Verification deliberately uses that
+current indexed value—not the MAC-protected, binding-time `record_id` in the
+payload—for its live field read and DAG authorization. The authorized details
+panel therefore displays the current record ID. The administrator-only technical
+history retrieves the `sigwm_record_rename` entries indexed by that same current
+record ID, preserving the old-to-new history without altering the binding.
+
+The legacy API exposes a supported `redcap_module_api_before` hook after token
+and `record_rename` authorization and before dispatching `API/record/rename.php`.
+For `content=record` and `action=rename`, the module captures the supplied old
+ID and `new_record_name`, then appends its event only after the API response
+confirms `REDCap::renameRecord()` returned `true`. This adds `api` as a third
+tracked rename origin without parsing REDCap's internal audit SQL.
+
 ## Verification backend (Phase 5A)
 
 Exact verification lookup uses the complete capture reference and can be

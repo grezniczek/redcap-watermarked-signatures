@@ -101,6 +101,7 @@ class VerificationService
 
         $result['binding'] = $binding;
         $result['binding_state'] = 'bound';
+        $result['current_record_id'] = $this->currentRecordId($binding);
         try {
             $result['checks']['binding_mac'] = $this->bindingMac->verify($binding);
         } catch (Throwable $exception) {
@@ -140,6 +141,7 @@ class VerificationService
             'capture_ref' => is_string($captureReference) ? $captureReference : null,
             'upload' => null,
             'binding' => null,
+            'current_record_id' => null,
             'edoc' => null,
             'checks' => array(
                 'binding_mac' => null,
@@ -207,8 +209,19 @@ class VerificationService
 
     private function checkCurrentField(&$result, $binding, $edocId)
     {
+        $currentRecordId = $this->currentRecordId($binding);
+        if ($currentRecordId === null) {
+            $this->addIssue($result, 'current_field_unreadable');
+            return;
+        }
+
+        // REDCap preserves the immutable record_id in the binding payload but
+        // updates the EM log row's indexed record column when a record is
+        // renamed. Use that current value for the live field comparison.
+        $currentBinding = $binding;
+        $currentBinding['record_id'] = $currentRecordId;
         try {
-            $currentValue = $this->currentValueReader->read($binding);
+            $currentValue = $this->currentValueReader->read($currentBinding);
         } catch (Throwable $exception) {
             $this->addIssue($result, 'current_field_unreadable');
             return;
@@ -218,6 +231,18 @@ class VerificationService
         $isCurrent = $currentEdocId !== null && $currentEdocId === (int) $edocId;
         $result['checks']['current_field'] = $isCurrent;
         $result['current_state'] = $isCurrent ? 'current' : 'historical';
+    }
+
+    private function currentRecordId($binding)
+    {
+        if (!is_array($binding)) {
+            return null;
+        }
+        $recordId = $binding['_current_record_id'] ?? ($binding['record_id'] ?? null);
+        if (!is_scalar($recordId) || (string) $recordId === '') {
+            return null;
+        }
+        return (string) $recordId;
     }
 
     private function finalizeBoundResult($result)

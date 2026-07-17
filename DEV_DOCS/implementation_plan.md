@@ -929,7 +929,10 @@ The following should normally be retained for as long as verification is promise
 
 Unbound upload provenance may be purged after a configurable period.
 
-The first implementation may retain it initially and add cleanup later, provided the storage implications are documented.
+The implementation uses a project-level retention setting with a default of 90
+days. A daily module cron purges only expired `sigwm_upload` entries that have
+no `sigwm_bind` event; a value of `0` disables automatic purging. Malformed
+upload provenance is retained for investigation rather than silently removed.
 
 ### 20.3 No image duplication
 
@@ -1259,7 +1262,6 @@ Deliverables:
 System-level settings:
 
 - enable administrator verification page;
-- upload provenance retention period;
 - anchor length;
 - capture/context reference lengths;
 - maximum signature image dimensions;
@@ -1270,6 +1272,7 @@ System-level settings:
 Project-level settings:
 
 - enable module for project;
+- unbound upload provenance retention period;
 - enable all signature fields or selected fields only;
 - watermark opacity;
 - footer visibility;

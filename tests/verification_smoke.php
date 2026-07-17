@@ -49,12 +49,13 @@ class VerificationModule
     public $events = array();
     public $queryCount = 0;
 
-    public function addEvent($message, $payload, $projectId = 123)
+    public function addEvent($message, $payload, $projectId = 123, $record = null)
     {
         $this->events[] = array(
             'log_id' => count($this->events) + 1,
             'message' => $message,
             'project_id' => $projectId,
+            'record' => $record === null ? ($payload['record_id'] ?? ($payload['new_record_id'] ?? '')) : (string) $record,
             'payload_json' => CanonicalJson::encode($payload)
         );
     }
@@ -62,6 +63,31 @@ class VerificationModule
     public function queryLogs($sql, $parameters)
     {
         $this->queryCount++;
+        if (strpos($sql, 'previous_record_id') !== false && strpos($sql, 'record = ?') !== false) {
+            list($message, $projectId, $recordId) = $parameters;
+            $rows = array();
+            foreach ($this->events as $event) {
+                if ($event['message'] !== $message
+                    || (int) $event['project_id'] !== (int) $projectId
+                    || (string) $event['record'] !== (string) $recordId) {
+                    continue;
+                }
+                $payload = json_decode($event['payload_json'], true);
+                $rows[] = array(
+                    'log_id' => $event['log_id'],
+                    'timestamp' => '2026-07-17 20:00:07',
+                    'username' => 'verification-user',
+                    'project_id' => $event['project_id'],
+                    'record' => $event['record'],
+                    'message' => $event['message'],
+                    'previous_record_id' => $payload['old_record_id'] ?? null,
+                    'rename_origin' => $payload['rename_origin'] ?? null,
+                    'rename_username' => $payload['rename_username'] ?? null,
+                    'renamed_at' => $payload['renamed_at'] ?? null
+                );
+            }
+            return new VerificationResult($rows);
+        }
         if (strpos($sql, 'where edoc_id = ?') !== false) {
             $edocId = (int) $parameters[0];
             $rows = array();
@@ -75,7 +101,7 @@ class VerificationModule
                     'timestamp' => '2026-07-17 13:02:15',
                     'username' => 'verification-user',
                     'project_id' => $event['project_id'],
-                    'record' => $payload['record_id'] ?? '',
+                    'record' => $event['record'],
                     'message' => $event['message']
                 ), $payload);
             }
@@ -100,7 +126,8 @@ class VerificationModule
                 $rows[] = array(
                     'log_id' => $event['log_id'],
                     'payload_json' => $event['payload_json'],
-                    'project_id' => $event['project_id']
+                    'project_id' => $event['project_id'],
+                    'record' => $event['record']
                 );
             }
         }
@@ -125,9 +152,11 @@ class VerificationCurrentValueReader
 {
     public $value = null;
     public $fail = false;
+    public $lastBinding = null;
 
     public function read($binding)
     {
+        $this->lastBinding = $binding;
         if ($this->fail) {
             throw new RuntimeException('Synthetic current-value read failure.');
         }
@@ -268,6 +297,29 @@ $history = (new LogRepository($module, $mac))->findDiagnosticEventsByEdocId(9813
 verificationAssert(count($history) === 2, 'Administrator diagnostic lookup did not return upload and binding history.');
 verificationAssert($history[0]['message'] === 'sigwm_upload' && $history[1]['message'] === 'sigwm_bind', 'Administrator diagnostic lookup returned an unexpected history.');
 verificationAssert(!array_key_exists('payload_json', $history[0]), 'Administrator diagnostic lookup returned raw payload JSON.');
+
+$renamedReference = ReferenceGenerator::captureReference();
+$renamedUpload = verificationUpload($renamedReference, 98139, $bytes);
+$renamedBinding = verificationBinding($renamedUpload, $mac);
+list($renamedService, $renamedModule, , $renamedCurrent) = verificationHarness($renamedUpload, $renamedBinding, $bytes);
+// REDCap updates the EM log row's indexed record value during a rename while
+// the MAC-protected payload retains the historical binding-time value.
+$renamedModule->events[1]['record'] = 'R-002';
+$renamedModule->addEvent('sigwm_record_rename', array(
+    'v' => 1,
+    'pid' => 123,
+    'old_record_id' => 'R-001',
+    'new_record_id' => 'R-002',
+    'rename_origin' => 'data_entry_record_home',
+    'rename_username' => 'rename-user',
+    'renamed_at' => '2026-07-17T20:00:07.906Z'
+), 123, 'R-002');
+$renamed = $renamedService->verify($renamedReference, 123);
+verificationAssert($renamed['status'] === 'valid_current', 'Record rename caused the live field check to fail.');
+verificationAssert($renamed['current_record_id'] === 'R-002', 'Verification did not expose the current record ID.');
+verificationAssert($renamedCurrent->lastBinding['record_id'] === 'R-002', 'Live field lookup used the historical record ID after rename.');
+$renameHistory = (new LogRepository($renamedModule, $mac))->findRecordRenameEventsByCurrentRecord(123, 'R-002');
+verificationAssert(count($renameHistory) === 1 && $renameHistory[0]['previous_record_id'] === 'R-001', 'Current record rename history was not found.');
 
 $current->value = '98138';
 verificationAssert($service->verify($captureReference, 123)['status'] === 'valid_historical', 'Historical signature was not distinguished from the current value.');

@@ -91,6 +91,7 @@ function projectUiResult($captureReference)
         'integrity' => 'valid',
         'current_state' => 'current',
         'capture_ref' => $captureReference,
+        'current_record_id' => 'R-002',
         'checks' => array('binding_mac' => true, 'current_field' => true),
         'issues' => array(),
         'edoc' => array('exists' => true, 'readable' => true, 'doc_name' => 'signature.png'),
@@ -172,7 +173,8 @@ $repository->binding = array(
     'edoc_id' => 98137,
     'pid' => 123,
     'instrument' => 'consent',
-    'record_id' => 'R-001'
+    'record_id' => 'R-001',
+    '_current_record_id' => 'R-002'
 );
 $mac = new ProjectUiMac();
 $service = new ProjectUiService();
@@ -184,7 +186,7 @@ $allowedPolicy = new ProjectAccessPolicy(123, false, array(
 $controller = new ProjectVerificationController(123, $repository, $mac, $service, $allowedPolicy);
 $presented = $controller->verify($captureReference);
 projectUiAssert($presented['status'] === 'valid_current' && $service->calls === 1, 'Authorized verification was not delegated to the service.');
-projectUiAssert($presented['details']['record_id'] === 'R-001', 'Authorized record details were not presented.');
+projectUiAssert($presented['details']['record_id'] === 'R-002', 'Authorized record details did not show the current record ID.');
 projectUiAssert(!isset($presented['upload']) && !isset($presented['binding']), 'Raw verification payload escaped the project presenter.');
 projectUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive technical values escaped the allowlist.');
 $printedReference = substr($captureReference, 2);
@@ -200,9 +202,9 @@ projectUiAssert($service->calls === $callsBeforeDenial, 'Denied form access invo
 $otherDagPolicy = new ProjectAccessPolicy(123, false, array(
     'data_entry' => '[consent,138]',
     'group_id' => 8
-), function ($record) { return 7; });
+), function ($record) { return $record === 'R-002' ? 8 : 7; });
 $otherDagController = new ProjectVerificationController(123, $repository, $mac, $service, $otherDagPolicy);
-projectUiAssert($otherDagController->verify($captureReference)['status'] === 'access_denied', 'DAG denial was not enforced.');
+projectUiAssert($otherDagController->verify($captureReference)['status'] === 'valid_current', 'Current record ID was not used for DAG authorization.');
 
 $repository->binding = null;
 $dagUnboundController = new ProjectVerificationController(123, $repository, $mac, $service, $dagPolicy);

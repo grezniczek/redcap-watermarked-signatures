@@ -17,10 +17,11 @@ namespace ExternalModules {
         public $logs = array();
         public $exitRequested = false;
         public $testUser;
+        public $projectSettings = array();
 
-        public function getProjectSetting($key)
+        public function getProjectSetting($key, $projectId = null)
         {
-            return false;
+            return $this->projectSettings[$key] ?? false;
         }
 
         public function log($message, $parameters = array())
@@ -39,6 +40,19 @@ namespace ExternalModules {
 
         public function queryLogs($sql, $parameters = array())
         {
+            if (strpos($sql, 'where message = ? and record = ?') !== false) {
+                list($message, $record) = $parameters;
+                foreach ($this->logs as $index => $log) {
+                    if ($log[0] === $message && (string) ($log[1]['record'] ?? '') === (string) $record) {
+                        return new \FakeModuleResult(array(
+                            'log_id' => $index + 1,
+                            'record' => $log[1]['record']
+                        ));
+                    }
+                }
+                return new \FakeModuleResult(null);
+            }
+
             list($message, $edocId) = $parameters;
             foreach ($this->logs as $index => $log) {
                 if ($log[0] === $message && (int) ($log[1]['edoc_id'] ?? 0) === (int) $edocId) {
@@ -347,6 +361,15 @@ namespace {
     setPrivateProperty($module, 'proj', new FakeProject());
     setPrivateProperty($module, 'project_id', 123);
 
+    moduleAssert(invokePrivate($module, 'unbound_upload_retention_days', array(123)) === 90, 'Unset retention setting did not use the 90-day default.');
+    $module->projectSettings['unbound-upload-retention-days'] = '0';
+    moduleAssert(invokePrivate($module, 'unbound_upload_retention_days', array(123)) === 0, 'Retention setting did not support disabling automatic purge.');
+    $module->projectSettings['unbound-upload-retention-days'] = 'invalid';
+    moduleAssert(invokePrivate($module, 'unbound_upload_retention_days', array(123)) === 90, 'Invalid retention setting did not fall back to the default.');
+    $module->projectSettings['unbound-upload-retention-days'] = '99999';
+    moduleAssert(invokePrivate($module, 'unbound_upload_retention_days', array(123)) === 3650, 'Retention setting did not enforce its maximum.');
+    $module->projectSettings = array();
+
     $now = time();
     $payload = array(
         'v' => 1,
@@ -571,6 +594,83 @@ namespace {
 
     $module->redcap_save_record(123, 'R-001', 'consent', 417, null, null, null, 1);
     moduleAssert(count($module->logs) === 2, 'Repeated save appended a duplicate binding.');
+
+    $formRenameModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($formRenameModule, 'proj', new FakeProject());
+    setPrivateProperty($formRenameModule, 'project_id', 123);
+    $_POST = array();
+    $formRenameModule->append_upload_provenance(uploadProvenance('participant_signature', 98140));
+    REDCap::$data = array(
+        'RENAME-OLD' => array(417 => array('participant_signature' => '98140'))
+    );
+    $formRenameModule->redcap_save_record(123, 'RENAME-OLD', 'consent', 417, null, null, null, 1);
+    // REDCap changes the module log's indexed record column before calling
+    // redcap_save_record after a form-level record-ID rename.
+    $formRenameModule->logs[1][1]['record'] = 'RENAME-NEW';
+    REDCap::$data = array(
+        'RENAME-NEW' => array(417 => array('participant_signature' => '98140'))
+    );
+    $_POST = array('__old_id__' => 'RENAME-OLD');
+    $formRenameModule->redcap_save_record(123, 'RENAME-NEW', 'consent', 417, null, null, null, 1);
+    $formRenameEvents = payloadsForMessage($formRenameModule, 'sigwm_record_rename');
+    moduleAssert(count($formRenameEvents) === 1, 'A form-save record rename was not tracked.');
+    moduleAssert($formRenameEvents[0]['old_record_id'] === 'RENAME-OLD' && $formRenameEvents[0]['new_record_id'] === 'RENAME-NEW', 'Form-save record rename captured the wrong record IDs.');
+    moduleAssert($formRenameEvents[0]['rename_origin'] === 'data_entry_form_save', 'Form-save record rename has the wrong origin.');
+    moduleAssert($formRenameModule->logs[2][1]['record'] === 'RENAME-NEW', 'Record-rename log was not indexed by the current record ID.');
+
+    $directRenameModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($directRenameModule, 'proj', new FakeProject());
+    setPrivateProperty($directRenameModule, 'project_id', 123);
+    $_POST = array();
+    $directRenameModule->append_upload_provenance(uploadProvenance('participant_signature', 98141));
+    REDCap::$data = array(
+        'HOME-OLD' => array(417 => array('participant_signature' => '98141'))
+    );
+    $directRenameModule->redcap_save_record(123, 'HOME-OLD', 'consent', 417, null, null, null, 1);
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_GET = array('route' => 'DataEntryController:renameRecord');
+    $_POST = array('record' => 'HOME-OLD', 'new_record' => 'HOME-NEW');
+    ob_start();
+    ob_start();
+    invokePrivate($directRenameModule, 'capture_direct_record_rename');
+    echo ob_get_clean();
+    $directRenameModule->logs[1][1]['record'] = 'HOME-NEW';
+    echo '1';
+    ob_end_flush();
+    ob_end_flush();
+    ob_get_clean();
+    $directRenameEvents = payloadsForMessage($directRenameModule, 'sigwm_record_rename');
+    moduleAssert(count($directRenameEvents) === 1, 'A successful record-home rename was not tracked.');
+    moduleAssert($directRenameEvents[0]['old_record_id'] === 'HOME-OLD' && $directRenameEvents[0]['new_record_id'] === 'HOME-NEW', 'Record-home rename captured the wrong record IDs.');
+    moduleAssert($directRenameEvents[0]['rename_origin'] === 'data_entry_record_home', 'Record-home rename has the wrong origin.');
+
+    $apiRenameModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($apiRenameModule, 'proj', new FakeProject());
+    setPrivateProperty($apiRenameModule, 'project_id', 123);
+    $_POST = array();
+    $apiRenameModule->append_upload_provenance(uploadProvenance('participant_signature', 98142));
+    REDCap::$data = array(
+        'API-OLD' => array(417 => array('participant_signature' => '98142'))
+    );
+    $apiRenameModule->redcap_save_record(123, 'API-OLD', 'consent', 417, null, null, null, 1);
+    ob_start();
+    ob_start();
+    moduleAssert($apiRenameModule->redcap_module_api_before(123, array(
+        'content' => 'record',
+        'action' => 'rename',
+        'record' => 'API-OLD',
+        'new_record_name' => 'API-NEW'
+    )) === null, 'API rename pre-hook unexpectedly returned an error.');
+    echo ob_get_clean();
+    $apiRenameModule->logs[1][1]['record'] = 'API-NEW';
+    echo '1';
+    ob_end_flush();
+    ob_end_flush();
+    ob_get_clean();
+    $apiRenameEvents = payloadsForMessage($apiRenameModule, 'sigwm_record_rename');
+    moduleAssert(count($apiRenameEvents) === 1, 'A successful API rename was not tracked.');
+    moduleAssert($apiRenameEvents[0]['old_record_id'] === 'API-OLD' && $apiRenameEvents[0]['new_record_id'] === 'API-NEW', 'API rename captured the wrong record IDs.');
+    moduleAssert($apiRenameEvents[0]['rename_origin'] === 'api', 'API rename has the wrong origin.');
 
     $repeatInstrumentModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($repeatInstrumentModule, 'proj', new FakeProject('instrument'));

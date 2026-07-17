@@ -18,8 +18,11 @@ function adminUiAssert($condition, $message)
 class AdministratorUiRepository
 {
     public $diagnostics = array();
+    public $renameDiagnostics = array();
     public $upload = null;
     public $requestedEdocId = null;
+    public $requestedRenameProjectId = null;
+    public $requestedRenameRecordId = null;
 
     public function findDiagnosticEventsByEdocId($edocId)
     {
@@ -30,6 +33,13 @@ class AdministratorUiRepository
     public function findUploadByEdocId($edocId)
     {
         return (int) $edocId === 1903 ? $this->upload : null;
+    }
+
+    public function findRecordRenameEventsByCurrentRecord($projectId, $recordId)
+    {
+        $this->requestedRenameProjectId = (int) $projectId;
+        $this->requestedRenameRecordId = (string) $recordId;
+        return $this->renameDiagnostics;
     }
 }
 
@@ -64,6 +74,18 @@ $repository->diagnostics = array(array(
     'payload_json' => '{"envelope_nonce":"must-not-be-presented"}',
     'binding_mac' => 'must-not-be-presented'
 ));
+$repository->renameDiagnostics = array(array(
+    'log_id' => 89,
+    'timestamp' => '2026-07-17 20:00:07',
+    'username' => 'gr',
+    'project_id' => 461,
+    'record' => '12',
+    'message' => 'sigwm_record_rename',
+    'previous_record_id' => '9',
+    'rename_origin' => 'data_entry_record_home',
+    'rename_username' => 'gr',
+    'renamed_at' => '2026-07-17T20:00:07.906Z'
+));
 $service = new AdministratorUiService();
 $service->result = array(
     'status' => 'valid_current',
@@ -71,6 +93,7 @@ $service->result = array(
     'integrity' => 'valid',
     'current_state' => 'current',
     'capture_ref' => $captureReference,
+    'current_record_id' => '12',
     'checks' => array('binding_mac' => true, 'current_field' => true),
     'issues' => array(),
     'edoc' => array('exists' => true, 'readable' => true),
@@ -116,9 +139,13 @@ adminUiAssert($service->lastReference === $captureReference && $service->lastPro
 adminUiAssert($repository->requestedEdocId === 1903, 'Administrator diagnostics did not use the verified upload edoc.');
 adminUiAssert($presented['details']['upload_project_id'] === 461, 'Upload project ID was not presented.');
 adminUiAssert($presented['details']['binding_log_id'] === 88, 'Binding log ID was not presented.');
+adminUiAssert($presented['details']['record_id'] === '12', 'Administrator details did not present the current record ID.');
 adminUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive verification values escaped administrator details.');
-adminUiAssert(count($presented['diagnostics']) === 1, 'Administrator diagnostic history was not presented.');
+adminUiAssert($repository->requestedRenameProjectId === 461 && $repository->requestedRenameRecordId === '12', 'Administrator history did not use the current binding record.');
+adminUiAssert(count($presented['diagnostics']) === 2, 'Administrator diagnostic history was not presented.');
 adminUiAssert(!isset($presented['diagnostics'][0]['payload_json']) && !isset($presented['diagnostics'][0]['binding_mac']), 'Raw diagnostic payload values escaped administrator history.');
+adminUiAssert($presented['diagnostics'][1]['message'] === 'sigwm_record_rename', 'Administrator history did not include the record-rename event.');
+adminUiAssert($presented['diagnostics'][1]['record'] === '12' && $presented['diagnostics'][1]['previous_record_id'] === '9', 'Administrator history did not preserve record-rename details.');
 $byEdocId = $controller->verifyEdocId('1903');
 adminUiAssert($byEdocId['lookup_type'] === 'edoc_id' && $byEdocId['lookup_value'] === 1903, 'Administrator edoc lookup was not identified as an edoc lookup.');
 adminUiAssert($service->lastReference === $captureReference && $service->lastProjectId === null, 'Administrator edoc lookup was not verified globally.');

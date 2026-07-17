@@ -58,7 +58,7 @@ $diagnosticSummaryLabels = array(
     .sigwm-verification .sigwm-result-table th { width: 260px; }
     .sigwm-verification.sigwm-administrator .sigwm-result-table th { width: 280px; }
     .sigwm-verification .sigwm-diagnostic-entry + .sigwm-diagnostic-entry .sigwm-diagnostic-event-row > th,
-    .sigwm-verification .sigwm-diagnostic-entry + .sigwm-diagnostic-entry .sigwm-diagnostic-event-row > td { border-top: 2px solid #444 !important; }
+    .sigwm-verification .sigwm-diagnostic-entry + .sigwm-diagnostic-entry .sigwm-diagnostic-event-row > td { border-top: 1px solid #444 !important; }
     .sigwm-verification .sigwm-diagnostic-json { margin: 0; border: 0; background-color: transparent; white-space: pre-wrap; font-size: .8125rem; }
     .sigwm-verification code { color: #333; overflow-wrap: anywhere; }
 </style>

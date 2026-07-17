@@ -68,6 +68,96 @@ class LogRepository
     }
 
     /**
+     * Return record-rename events associated with the current record ID. REDCap
+     * updates the indexed record column in all EM log rows during each rename,
+     * so this returns the retained rename history for a binding.
+     */
+    public function findRecordRenameEventsByCurrentRecord($projectId, $recordId)
+    {
+        if (!is_numeric($projectId) || (int) $projectId < 1 || !is_scalar($recordId) || (string) $recordId === '') {
+            return array();
+        }
+
+        $result = $this->queryLogsPrimary(
+            'select log_id, timestamp, username, project_id, record, message, previous_record_id, rename_origin, rename_username, renamed_at where message = ? and project_id = ? and record = ? order by log_id asc',
+            array('sigwm_record_rename', (int) $projectId, (string) $recordId)
+        );
+        $events = array();
+        while ($result && ($row = $result->fetch_assoc())) {
+            $events[] = $row;
+        }
+        return $events;
+    }
+
+    /**
+     * Return the persisted spelling of a record ID when this project has at
+     * least one module binding for it. REDCap updates the indexed `record`
+     * column when it renames a record, so this is also a safe post-rename
+     * existence check.
+     */
+    public function findBoundRecordId($recordId)
+    {
+        $result = $this->module->queryLogs(
+            'select record where message = ? and record = ? order by log_id asc limit 1',
+            array('sigwm_bind', (string) $recordId)
+        );
+        $row = $result ? $result->fetch_assoc() : null;
+        if (!$row || !isset($row['record']) || $row['record'] === '') {
+            return null;
+        }
+        return (string) $row['record'];
+    }
+
+    /**
+     * Remove only expired upload events that never obtained a binding. The
+     * caller must have selected the target project in the EM framework.
+     */
+    public function purgeExpiredUnboundUploads($beforeTimestamp)
+    {
+        $result = $this->module->queryLogs(
+            'select log_id, edoc_id where message = ? and timestamp < ? order by log_id asc',
+            array('sigwm_upload', (string) $beforeTimestamp)
+        );
+        $removed = 0;
+
+        while ($result && ($row = $result->fetch_assoc())) {
+            $logId = isset($row['log_id']) ? (int) $row['log_id'] : 0;
+            $edocId = isset($row['edoc_id']) ? (int) $row['edoc_id'] : 0;
+            if ($logId < 1 || $edocId < 1) {
+                // A malformed provenance entry is evidence worth retaining;
+                // it must not be silently deleted by routine cleanup.
+                continue;
+            }
+
+            // A binding can be in a different project only in an invalid
+            // cross-project edoc reuse attempt. Check globally so cleanup
+            // remains conservative in that situation too.
+            if ($this->findBindingByEdocId($edocId) !== null) {
+                continue;
+            }
+
+            $removed += (int) $this->module->removeLogs(
+                'log_id = ? and message = ?',
+                array($logId, 'sigwm_upload')
+            );
+        }
+
+        return $removed;
+    }
+
+    public function appendRecordRename($event)
+    {
+        $this->module->log('sigwm_record_rename', array(
+            'record' => $event['new_record_id'],
+            'previous_record_id' => $event['old_record_id'],
+            'rename_origin' => $event['rename_origin'],
+            'rename_username' => $event['rename_username'],
+            'renamed_at' => $event['renamed_at'],
+            'payload_json' => CanonicalJson::encode($event)
+        ));
+    }
+
+    /**
      * Return the technical log history associated with one globally unique edoc.
      * The administrator presenter selects the fields it may expose.
      */
@@ -138,7 +228,7 @@ class LogRepository
             // Mentioning project_id explicitly suppresses the framework's
             // automatic current-project clause. The one-edoc-one-binding
             // invariant applies across every project using this module.
-            'select log_id, payload_json, project_id where message = ? and edoc_id = ? and project_id >= 0 order by log_id asc limit 2',
+            'select log_id, payload_json, project_id, record where message = ? and edoc_id = ? and project_id >= 0 order by log_id asc limit 2',
             array($message, (int) $edocId)
         );
         $row = $result ? $result->fetch_assoc() : null;
@@ -164,6 +254,9 @@ class LogRepository
         }
         $payload['_log_id'] = (int) $row['log_id'];
         $payload['_project_id'] = isset($row['project_id']) ? (int) $row['project_id'] : null;
+        $payload['_current_record_id'] = isset($row['record']) && $row['record'] !== null && $row['record'] !== ''
+            ? (string) $row['record']
+            : null;
         return $payload;
     }
 
