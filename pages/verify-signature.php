@@ -115,6 +115,7 @@ $detailLabels = array(
     </form>
 
     <?php if ($result !== null): ?>
+        <div id="sigwm-verification-result">
         <?php
         $status = $result['status'] ?? 'incomplete';
         $presentation = $statusPresentation[$status] ?? $statusPresentation['incomplete'];
@@ -177,5 +178,20 @@ $detailLabels = array(
                 <code><?= $escape(implode(', ', $result['issues'])) ?></code>
             </div>
         <?php endif; ?>
+        </div>
     <?php endif; ?>
 </div>
+
+<script>
+    (function () {
+        const captureReference = document.getElementById('sigwm-capture-ref');
+        if (!captureReference) return;
+
+        captureReference.addEventListener('search', function () {
+            if (captureReference.value === '') {
+                const result = document.getElementById('sigwm-verification-result');
+                if (result) result.remove();
+            }
+        });
+    })();
+</script>
