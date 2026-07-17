@@ -96,13 +96,23 @@ namespace {
         }
     }
 
+    class FakeFramework
+    {
+        public function getUrl($file)
+        {
+            return '/modules/watermarked_signatures/' . $file;
+        }
+    }
+
     class FakeProject
     {
         public $metadata;
         public $metadata_temp = array();
+        private $repeatType;
 
-        public function __construct()
+        public function __construct($repeatType = null, $includeSecondSignature = false)
         {
+            $this->repeatType = $repeatType;
             $this->metadata = array(
                 'participant_signature' => array(
                     'form_name' => 'consent',
@@ -111,6 +121,14 @@ namespace {
                     'misc' => '@WATERMARKED-SIGNATURE'
                 )
             );
+            if ($includeSecondSignature) {
+                $this->metadata['witness_signature'] = array(
+                    'form_name' => 'consent',
+                    'element_type' => 'file',
+                    'element_validation_type' => 'enhanced_signature',
+                    'misc' => '@WATERMARKED-SIGNATURE'
+                );
+            }
         }
 
         public function validateEventId($eventId)
@@ -125,17 +143,18 @@ namespace {
 
         public function isRepeatingEvent($eventId)
         {
-            return false;
+            return $this->repeatType === 'event';
         }
 
         public function isRepeatingForm($eventId, $instrument)
         {
-            return false;
+            return $this->repeatType === 'instrument';
         }
     }
 
     require_once __DIR__ . '/../WatermarkedSignaturesExternalModule.php';
 
+    use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\Anchor;
     use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\EnvelopeSigner;
     use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\KeyDerivation;
     use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
@@ -155,11 +174,49 @@ namespace {
         $property->setValue($object, $value);
     }
 
-    function invokePrivate($object, $name)
+    function invokePrivate($object, $name, $arguments = array())
     {
         $method = new ReflectionMethod($object, $name);
         $method->setAccessible(true);
-        return $method->invoke($object);
+        return $method->invokeArgs($object, $arguments);
+    }
+
+    function uploadProvenance($field, $edocId)
+    {
+        $scope = array(
+            'v' => 1,
+            'pid' => 123,
+            'event_id' => 417,
+            'instrument' => 'consent',
+            'field' => $field
+        );
+        return array(
+            'v' => 1,
+            'capture_ref' => ReferenceGenerator::captureReference(),
+            'context_ref' => ReferenceGenerator::contextReference(),
+            'record_ref' => null,
+            'anchor' => Anchor::create($scope, KeyDerivation::derive(KeyDerivation::ANCHOR_INFO)),
+            'pid' => 123,
+            'event_id' => 417,
+            'instrument' => 'consent',
+            'field' => $field,
+            'edoc_id' => $edocId,
+            'captured_at' => '2026-07-17T10:00:00Z',
+            'file_sha256' => hash('sha256', "test-edoc-{$edocId}"),
+            'envelope_nonce' => ReferenceGenerator::nonce(),
+            'watermark_version' => 1
+        );
+    }
+
+    function payloadsForMessage($module, $message)
+    {
+        $payloads = array();
+        foreach ($module->logs as $log) {
+            if ($log[0] === $message) {
+                $payloads[] = json_decode($log[1]['payload_json'], true);
+            }
+        }
+        return $payloads;
     }
 
     $GLOBALS['salt'] = 'redcap-test-installation-salt';
@@ -194,6 +251,25 @@ namespace {
         'purpose' => 'signature'
     );
     $signer = new EnvelopeSigner(KeyDerivation::derive(KeyDerivation::ENVELOPE_INFO));
+
+    $multiEnvelopeModule = new WatermarkedSignaturesExternalModule();
+    $multiEnvelopeModule->framework = new FakeFramework();
+    setPrivateProperty($multiEnvelopeModule, 'proj', new FakeProject(null, true));
+    setPrivateProperty($multiEnvelopeModule, 'project_id', 123);
+    ob_start();
+    invokePrivate($multiEnvelopeModule, 'inject_capture_envelopes', array('consent', 417));
+    $multiEnvelopeHtml = ob_get_clean();
+    moduleAssert(
+        preg_match('/window\.REDCapSignatureWatermark=(\{.*?\});<\/script>/s', $multiEnvelopeHtml, $configMatch) === 1,
+        'Per-field envelope configuration was not injected.'
+    );
+    $multiEnvelopeConfig = json_decode($configMatch[1], true);
+    moduleAssert(count($multiEnvelopeConfig['envelopes']) === 2, 'Multiple configured signature fields did not receive separate envelopes.');
+    $participantEnvelope = $signer->verify($multiEnvelopeConfig['envelopes']['participant_signature']);
+    $witnessEnvelope = $signer->verify($multiEnvelopeConfig['envelopes']['witness_signature']);
+    moduleAssert($participantEnvelope['field'] === 'participant_signature', 'Participant envelope was scoped to the wrong field.');
+    moduleAssert($witnessEnvelope['field'] === 'witness_signature', 'Witness envelope was scoped to the wrong field.');
+    moduleAssert($participantEnvelope['context_ref'] !== $witnessEnvelope['context_ref'], 'Signature fields shared a context reference.');
 
     $_SERVER['REQUEST_METHOD'] = 'POST';
     $_GET = array('event_id' => '417', 'instance' => '1');
@@ -238,6 +314,83 @@ namespace {
 
     $module->redcap_save_record(123, 'R-001', 'consent', 417, null, null, null, 1);
     moduleAssert(count($module->logs) === 2, 'Repeated save appended a duplicate binding.');
+
+    $repeatInstrumentModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($repeatInstrumentModule, 'proj', new FakeProject('instrument'));
+    setPrivateProperty($repeatInstrumentModule, 'project_id', 123);
+    $repeatInstrumentModule->append_upload_provenance(uploadProvenance('participant_signature', 98138));
+    REDCap::$data = array(
+        'R-REPEAT' => array(
+            'repeat_instances' => array(417 => array('consent' => array(3 => array('participant_signature' => '98138'))))
+        )
+    );
+    $repeatInstrumentModule->redcap_save_record(123, 'R-REPEAT', 'consent', 417, null, null, null, 3);
+    $repeatInstrumentBinding = payloadsForMessage($repeatInstrumentModule, 'sigwm_bind')[0];
+    moduleAssert($repeatInstrumentBinding['repeat_type'] === 'instrument', 'Repeating instrument was not bound with its repeat type.');
+    moduleAssert($repeatInstrumentBinding['repeat_instrument'] === 'consent', 'Repeating instrument name was not bound.');
+    moduleAssert($repeatInstrumentBinding['repeat_instance'] === 3, 'Repeating instrument instance was not bound.');
+
+    $repeatEventModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($repeatEventModule, 'proj', new FakeProject('event'));
+    setPrivateProperty($repeatEventModule, 'project_id', 123);
+    $repeatEventModule->append_upload_provenance(uploadProvenance('participant_signature', 98139));
+    REDCap::$data = array(
+        'R-EVENT' => array(
+            'repeat_instances' => array(417 => array('' => array(4 => array('participant_signature' => '98139'))))
+        )
+    );
+    $repeatEventModule->redcap_save_record(123, 'R-EVENT', 'consent', 417, null, null, null, 4);
+    $repeatEventBinding = payloadsForMessage($repeatEventModule, 'sigwm_bind')[0];
+    moduleAssert($repeatEventBinding['repeat_type'] === 'event', 'Repeating event was not bound with its repeat type.');
+    moduleAssert($repeatEventBinding['repeat_instrument'] === null, 'Repeating event incorrectly stored an instrument.');
+    moduleAssert($repeatEventBinding['repeat_instance'] === 4, 'Repeating event instance was not bound.');
+
+    $abandonedModule = new WatermarkedSignaturesExternalModule();
+    $abandonedModule->append_upload_provenance(uploadProvenance('participant_signature', 98999));
+    moduleAssert(count(payloadsForMessage($abandonedModule, 'sigwm_upload')) === 1, 'Abandoned upload provenance was not retained.');
+    moduleAssert(count(payloadsForMessage($abandonedModule, 'sigwm_bind')) === 0, 'An upload was bound without a successful form save.');
+
+    $lifecycleModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($lifecycleModule, 'proj', new FakeProject(null, true));
+    setPrivateProperty($lifecycleModule, 'project_id', 123);
+    $lifecycleModule->append_upload_provenance(uploadProvenance('participant_signature', 99001));
+    $lifecycleModule->append_upload_provenance(uploadProvenance('participant_signature', 99002));
+    $lifecycleModule->append_upload_provenance(uploadProvenance('witness_signature', 99003));
+    REDCap::$data = array(
+        'R-MULTI' => array(417 => array(
+            'participant_signature' => '99002',
+            'witness_signature' => '99003'
+        ))
+    );
+    $lifecycleModule->redcap_save_record(123, 'R-MULTI', 'consent', 417, null, null, null, 1);
+    $lifecycleBindings = payloadsForMessage($lifecycleModule, 'sigwm_bind');
+    $boundEdocs = array_map(function ($binding) { return $binding['edoc_id']; }, $lifecycleBindings);
+    sort($boundEdocs);
+    moduleAssert($boundEdocs === array(99002, 99003), 'Save did not bind exactly the two persisted signature fields.');
+    moduleAssert(!in_array(99001, $boundEdocs, true), 'A superseded pre-save upload was bound.');
+
+    $logCountAfterFirstSave = count($lifecycleModule->logs);
+    $lifecycleModule->redcap_save_record(123, 'R-MULTI', 'consent', 417, null, null, null, 1);
+    moduleAssert(count($lifecycleModule->logs) === $logCountAfterFirstSave, 'Repeated multi-field save was not idempotent.');
+
+    REDCap::$data = array(
+        'R-MULTI' => array(417 => array('participant_signature' => '', 'witness_signature' => ''))
+    );
+    $lifecycleModule->redcap_save_record(123, 'R-MULTI', 'consent', 417, null, null, null, 1);
+    moduleAssert(count($lifecycleModule->logs) === $logCountAfterFirstSave, 'Clearing signature fields altered historical bindings.');
+
+    $lifecycleModule->append_upload_provenance(uploadProvenance('participant_signature', 99004));
+    REDCap::$data = array(
+        'R-MULTI' => array(417 => array(
+            'participant_signature' => '99004',
+            'witness_signature' => '99003'
+        ))
+    );
+    $lifecycleModule->redcap_save_record(123, 'R-MULTI', 'consent', 417, null, null, null, 1);
+    $replacementBindings = payloadsForMessage($lifecycleModule, 'sigwm_bind');
+    $replacementEdocs = array_map(function ($binding) { return $binding['edoc_id']; }, $replacementBindings);
+    sort($replacementEdocs);
+    moduleAssert($replacementEdocs === array(99002, 99003, 99004), 'A later replacement did not preserve old bindings and bind the new edoc.');
 
     $scopeMismatchModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($scopeMismatchModule, 'proj', new FakeProject());

@@ -12,19 +12,21 @@
     window.filePopUp = function (fieldName, signatureType, replaceVersion) {
         const result = originalFilePopUp.apply(this, arguments);
         const envelope = config.envelopes && config.envelopes[fieldName];
+        const form = document.getElementById('form_file_upload');
+        let input = form && form.querySelector('input[name="sigwm_envelope"]');
 
-        if (envelope && Number(signatureType) !== 0) {
-            const form = document.getElementById('form_file_upload');
-            if (form) {
-                let input = form.querySelector('input[name="sigwm_envelope"]');
-                if (!input) {
-                    input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = 'sigwm_envelope';
-                    form.appendChild(input);
-                }
-                input.value = envelope;
+        if (form && envelope && Number(signatureType) !== 0) {
+            if (!input) {
+                input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'sigwm_envelope';
+                form.appendChild(input);
             }
+            input.value = envelope;
+        } else if (input) {
+            // Never allow an envelope from a previously opened signature field
+            // to accompany another field's upload if REDCap reuses the form.
+            input.remove();
         }
 
         if (config.debug && window.console) {

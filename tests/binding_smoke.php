@@ -145,7 +145,7 @@ bindingAssert($classic->bindingValues('sig_a')['repeat_instance'] === null, 'Cla
 
 $repeatEvent = new SavedContext(new BindingTestProject('event'), 123, 'R-001', 'consent', 417, 3);
 $repeatEventData = array(
-    'R-001' => array('repeat_instances' => array(417 => array(null => array(3 => array('sig_a' => '2001')))))
+    'R-001' => array('repeat_instances' => array(417 => array('' => array(3 => array('sig_a' => '2001')))))
 );
 bindingAssert($repeatEvent->extractFieldValues($repeatEventData, array('sig_a'))['sig_a'] === '2001', 'Repeating-event extraction failed.');
 bindingAssert($repeatEvent->bindingValues('sig_a')['repeat_type'] === 'event', 'Repeating-event type was not normalized.');

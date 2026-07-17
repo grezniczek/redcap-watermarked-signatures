@@ -38,7 +38,9 @@ class SavedContext
         $recordData = isset($data[$this->recordId]) ? $data[$this->recordId] : array();
 
         if ($this->repeatType === 'event') {
-            $node = $recordData['repeat_instances'][$this->eventId][null][$this->hookRepeatInstance] ?? array();
+            // Records::getData() uses an empty repeat-instrument key for a
+            // repeating event because the event itself owns the instance.
+            $node = $recordData['repeat_instances'][$this->eventId][''][$this->hookRepeatInstance] ?? array();
         } elseif ($this->repeatType === 'instrument') {
             $node = $recordData['repeat_instances'][$this->eventId][$this->instrument][$this->hookRepeatInstance] ?? array();
         } else {
