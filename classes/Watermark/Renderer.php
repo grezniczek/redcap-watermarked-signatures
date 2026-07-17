@@ -11,16 +11,17 @@ class Renderer
     const MAX_DECODED_BYTES = 6291456;
     const MAX_DIMENSION = 4096;
     const MAX_PIXELS = 12000000;
-    const MIN_OUTPUT_WIDTH = 300;
+    const MIN_OUTPUT_WIDTH = 460;
     const FOOTER_HEIGHT = 38;
+    const MAX_PROJECT_REFERENCE_LENGTH = 30;
     const FONT = 2;
 
-    public function renderBase64($encodedPng, $anchor, $contextReference, $captureReference, $capturedAt)
+    public function renderBase64($encodedPng, $anchor, $contextReference, $captureReference, $capturedAt, $projectReference = null)
     {
         if (!extension_loaded('gd')) {
             throw new \RuntimeException('The GD PHP extension is required to watermark signatures.');
         }
-        self::validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt);
+        self::validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt, $projectReference);
         if (!is_string($encodedPng) || $encodedPng === '') {
             throw new \InvalidArgumentException('The submitted signature image is empty.');
         }
@@ -80,9 +81,12 @@ class Renderer
         // the white signature background.
         $overlayEdgeColor = imagecolorallocatealpha($canvas, 255, 255, 255, 88);
         $overlayColor = imagecolorallocatealpha($canvas, 100, 160, 200, 75);
-        $overlay = self::compact($anchor) . ' ' .
-            substr(self::compact($contextReference), 0, 9) . ' ' .
-            substr(self::compact($captureReference), 0, 9);
+        // Use the complete, dashless values with their visible labels. This
+        // preserves the familiar S:/A:/C: notation while keeping the repeated
+        // overlay compact enough for REDCap's normalized 460px signature box.
+        $overlay = 'S:' . self::compact(self::withoutPrefix($captureReference)) . ' ' .
+            'A:' . self::compact($anchor) . ' ' .
+            'C:' . self::compact(self::withoutPrefix($contextReference));
         $font = self::FONT;
         $textWidth = imagefontwidth($font) * strlen($overlay);
         $stepX = max(150, $textWidth + 55);
@@ -101,8 +105,10 @@ class Renderer
         imagefilledrectangle($canvas, 0, $height, $outputWidth, $outputHeight, $band);
         imageline($canvas, 0, $height, $outputWidth, $height, $line);
 
-        $line1 = 'WM' . self::VERSION . ' A:' . $anchor . ' C:' . self::withoutPrefix($contextReference);
-        $line2 = 'S:' . self::withoutPrefix($captureReference) . ' ' . $capturedAt;
+        // Keep the user-entered capture reference at the start of the footer:
+        // it is the identifier most often read directly from the image.
+        $line1 = 'WM' . self::VERSION . ' S:' . self::withoutPrefix($captureReference) . ' A:' . $anchor . ' C:' . self::withoutPrefix($contextReference);
+        $line2 = 'TS:' . $capturedAt . ($projectReference === null ? '' : ' REF:' . $projectReference);
         imagestring($canvas, $font, 5, $height + 4, self::fitText($line1, $outputWidth, $font), $text);
         imagestring($canvas, $font, 5, $height + 20, self::fitText($line2, $outputWidth, $font), $text);
 
@@ -120,7 +126,7 @@ class Renderer
         return $output;
     }
 
-    private static function validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt)
+    private static function validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt, $projectReference)
     {
         $alphabet = '[0-9A-HJKMNP-TV-Z]';
         if (!is_string($anchor) || !preg_match('/^' . $alphabet . '{4}(?:-' . $alphabet . '{4}){3}$/D', $anchor)) {
@@ -134,6 +140,12 @@ class Renderer
         }
         if (!is_string($capturedAt) || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/D', $capturedAt)) {
             throw new \InvalidArgumentException('The watermark timestamp must be UTC ISO 8601.');
+        }
+        if ($projectReference !== null
+            && (!is_string($projectReference)
+                || strlen($projectReference) > self::MAX_PROJECT_REFERENCE_LENGTH
+                || !preg_match('/^[A-Za-z0-9][A-Za-z0-9 ._\/-]*$/D', $projectReference))) {
+            throw new \InvalidArgumentException('The watermark public project reference is invalid.');
         }
     }
 

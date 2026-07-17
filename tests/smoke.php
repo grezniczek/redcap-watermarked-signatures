@@ -73,6 +73,7 @@ $payload = array(
     'field' => 'participant_signature',
     'context_ref' => ReferenceGenerator::contextReference(),
     'record_ref' => null,
+    'project_reference' => null,
     'issued_at' => 1784212200,
     'expires_at' => 1784219400,
     'nonce' => ReferenceGenerator::nonce(),
@@ -120,6 +121,22 @@ if (extension_loaded('gd')) {
     $info = getimagesizefromstring($watermarked);
     assertTrue($info[0] === 460 && $info[1] === 158 && $info[2] === IMAGETYPE_PNG, 'Rendered PNG dimensions failed.');
     assertTrue(hash('sha256', $watermarked) !== hash('sha256', $png), 'Renderer did not change the PNG.');
+
+    $publicReference = 'SIGWM-TEST-2026';
+    $watermarkedWithReference = $renderer->renderBase64(
+        base64_encode($png),
+        $anchor,
+        $payload['context_ref'],
+        $captureReference,
+        '2026-07-16T14:32:05Z',
+        $publicReference
+    );
+    $referenceInfo = getimagesizefromstring($watermarkedWithReference);
+    assertTrue(
+        $referenceInfo[1] === 120 + Renderer::FOOTER_HEIGHT,
+        'A public project reference changed the two-line footer height.'
+    );
+    assertTrue(!hash_equals($watermarked, $watermarkedWithReference), 'Public project reference did not affect the rendered footer.');
 
     $sameWatermark = $renderer->renderBase64(
         base64_encode($png),
@@ -205,8 +222,8 @@ if (extension_loaded('gd')) {
     }
 
     $longestFooter = max(
-        strlen('WM1 A:' . $anchor . ' C:' . preg_replace('/^C-/', '', $payload['context_ref'])),
-        strlen('S:' . preg_replace('/^S-/', '', $captureReference) . ' 2026-07-16T14:32:05.381Z')
+        strlen('WM1 S:' . preg_replace('/^S-/', '', $captureReference) . ' A:' . $anchor . ' C:' . preg_replace('/^C-/', '', $payload['context_ref'])),
+        strlen('TS:2026-07-16T14:32:05.381Z REF:' . str_repeat('X', Renderer::MAX_PROJECT_REFERENCE_LENGTH))
     );
     assertTrue(
         Renderer::MIN_OUTPUT_WIDTH >= 10 + ($longestFooter * imagefontwidth(Renderer::FONT)),
@@ -260,6 +277,17 @@ if (extension_loaded('gd')) {
             '2026-07-16 14:32:05'
         );
     }, 'Renderer accepted a non-UTC watermark timestamp.');
+
+    assertThrows(function () use ($renderer, $png, $anchor, $payload, $captureReference) {
+        $renderer->renderBase64(
+            base64_encode($png),
+            $anchor,
+            $payload['context_ref'],
+            $captureReference,
+            '2026-07-16T14:32:05Z',
+            str_repeat('X', Renderer::MAX_PROJECT_REFERENCE_LENGTH + 1)
+        );
+    }, 'Renderer accepted an oversized public project reference.');
 }
 
 echo "Watermarked Signatures smoke tests passed.\n";

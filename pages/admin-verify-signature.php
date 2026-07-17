@@ -55,6 +55,7 @@ $verificationPage = array(
         'binding_log_id' => 'Binding log ID',
         'capture_ref' => 'Capture reference',
         'context_ref' => 'Context reference',
+        'project_reference' => 'Public project reference',
         'anchor' => 'Visible anchor',
         'record_id' => 'Record ID',
         'event_id' => 'Event ID',

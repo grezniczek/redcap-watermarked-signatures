@@ -104,6 +104,7 @@ function projectUiResult($captureReference)
             'captured_at' => '2026-07-17T13:00:00Z',
             'edoc_id' => 98137,
             'file_sha256' => str_repeat('a', 64),
+            'project_reference' => 'SIGWM-TEST',
             'envelope_nonce' => 'must-not-be-presented',
             'pid' => 123,
             'instrument' => 'consent'
@@ -187,6 +188,7 @@ $controller = new ProjectVerificationController(123, $repository, $mac, $service
 $presented = $controller->verify($captureReference);
 projectUiAssert($presented['status'] === 'valid_current' && $service->calls === 1, 'Authorized verification was not delegated to the service.');
 projectUiAssert($presented['details']['record_id'] === 'R-002', 'Authorized record details did not show the current record ID.');
+projectUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Authorized details did not show the public project reference.');
 projectUiAssert(!isset($presented['upload']) && !isset($presented['binding']), 'Raw verification payload escaped the project presenter.');
 projectUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive technical values escaped the allowlist.');
 $printedReference = substr($captureReference, 2);

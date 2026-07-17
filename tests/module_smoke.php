@@ -246,6 +246,7 @@ namespace {
     use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\EnvelopeSigner;
     use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\KeyDerivation;
     use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
+    use DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer;
     use DE\RUB\WatermarkedSignaturesExternalModule\WatermarkedSignaturesExternalModule;
 
     function moduleAssert($condition, $message)
@@ -283,6 +284,7 @@ namespace {
             'capture_ref' => ReferenceGenerator::captureReference(),
             'context_ref' => ReferenceGenerator::contextReference(),
             'record_ref' => null,
+            'project_reference' => null,
             'capture_origin' => $captureOrigin,
             'capture_username' => $captureUsername,
             'anchor' => Anchor::create($scope, KeyDerivation::derive(KeyDerivation::ANCHOR_INFO)),
@@ -380,6 +382,7 @@ namespace {
         'capture_origin' => 'data_entry',
         'context_ref' => ReferenceGenerator::contextReference(),
         'record_ref' => null,
+        'project_reference' => 'SIGWM-TEST',
         'issued_at' => $now,
         'expires_at' => $now + 3600,
         'nonce' => ReferenceGenerator::nonce(),
@@ -389,6 +392,7 @@ namespace {
 
     $multiEnvelopeModule = new WatermarkedSignaturesExternalModule();
     $multiEnvelopeModule->framework = new FakeFramework();
+    $multiEnvelopeModule->projectSettings['public-project-reference'] = 'SIGWM-TEST';
     setPrivateProperty($multiEnvelopeModule, 'proj', new FakeProject(null, true));
     setPrivateProperty($multiEnvelopeModule, 'project_id', 123);
     ob_start();
@@ -405,6 +409,7 @@ namespace {
     moduleAssert($participantEnvelope['field'] === 'participant_signature', 'Participant envelope was scoped to the wrong field.');
     moduleAssert($witnessEnvelope['field'] === 'witness_signature', 'Witness envelope was scoped to the wrong field.');
     moduleAssert($participantEnvelope['context_ref'] !== $witnessEnvelope['context_ref'], 'Signature fields shared a context reference.');
+    moduleAssert($participantEnvelope['project_reference'] === 'SIGWM-TEST' && $witnessEnvelope['project_reference'] === 'SIGWM-TEST', 'Configured public project reference was not signed into every field envelope.');
 
     $verificationLink = array('key' => 'signature-verification', 'url' => 'pages/verify-signature.php');
     $linkModule = new WatermarkedSignaturesExternalModule();
@@ -448,6 +453,7 @@ namespace {
     $autoNumberEnvelope = $signer->verify($autoNumberConfig['envelopes']['participant_signature']);
     moduleAssert($autoNumberEnvelope['capture_origin'] === 'data_entry', 'Data-entry envelope did not identify its capture origin.');
     moduleAssert($autoNumberEnvelope['record_ref'] === null, 'Tentative auto-number record leaked into the capture envelope.');
+    moduleAssert($autoNumberEnvelope['project_reference'] === null, 'Unset public project reference was not represented explicitly as null.');
     moduleAssert(!array_key_exists('record_id', $autoNumberEnvelope), 'Capture envelope contained a pre-save record ID.');
     $autoNumberUpload = captureSignatureUpload(
         $autoNumberModule,
@@ -457,6 +463,7 @@ namespace {
     );
     moduleAssert($autoNumberUpload['capture_origin'] === 'data_entry', 'Data-entry upload provenance lost its capture origin.');
     moduleAssert($autoNumberUpload['capture_username'] === 'auto-capture-user', 'Upload provenance did not snapshot the authenticated capture username.');
+    moduleAssert($autoNumberUpload['project_reference'] === null, 'Upload provenance did not retain the public project reference snapshot.');
     moduleAssert(count(payloadsForMessage($autoNumberModule, 'sigwm_bind')) === 0, 'Auto-number upload bound before record creation.');
     REDCap::$data = array(
         '1007' => array(417 => array('participant_signature' => '99501'))
@@ -467,6 +474,7 @@ namespace {
     moduleAssert($autoNumberBinding['record_id'] === '1007', 'Auto-number binding did not use REDCap\'s authoritative record ID.');
     moduleAssert($autoNumberBinding['context_ref'] === $autoNumberUpload['context_ref'], 'Auto-number binding lost its pre-save context reference.');
     moduleAssert($autoNumberBinding['record_ref'] === null, 'Deferred record pseudonym was not represented explicitly as null.');
+    moduleAssert($autoNumberBinding['project_reference'] === null, 'Binding did not retain the public project reference snapshot.');
     moduleAssert($autoNumberBinding['capture_origin'] === 'data_entry' && $autoNumberBinding['save_origin'] === 'data_entry', 'Data-entry binding did not retain matching origins.');
     moduleAssert($autoNumberBinding['capture_username'] === 'auto-capture-user', 'Binding lost the capture username snapshot.');
     moduleAssert($autoNumberBinding['save_username'] === 'auto-save-user', 'Binding did not snapshot the save username.');
@@ -567,7 +575,10 @@ namespace {
 
     $watermarkedPng = base64_decode($_POST['myfile_base64'], true);
     $info = getimagesizefromstring($watermarkedPng);
-    moduleAssert($info[0] === 460 && $info[1] === 158, 'Upload interceptor did not replace the PNG.');
+    moduleAssert(
+        $info[0] === 460 && $info[1] === 120 + Renderer::FOOTER_HEIGHT,
+        'Upload interceptor did not replace the PNG with the two-line public-reference footer.'
+    );
     moduleAssert(count($module->logs) === 1 && $module->logs[0][0] === 'sigwm_upload', 'Upload provenance was not logged.');
     moduleAssert($module->logs[0][1]['edoc_id'] === 98137, 'The returned edoc ID was not captured.');
     moduleAssert(strpos($response, "stopUpload(1,'participant_signature','98137'") !== false, 'The iframe response was altered.');
@@ -577,6 +588,7 @@ namespace {
     moduleAssert((bool) preg_match('/Z$/', $uploadProvenance['captured_at']), 'Provenance timestamp is not UTC.');
     moduleAssert($uploadProvenance['capture_origin'] === 'data_entry', 'Upload provenance did not retain the data-entry origin.');
     moduleAssert($uploadProvenance['capture_username'] === 'data-entry-user', 'Upload provenance did not retain the current username.');
+    moduleAssert($uploadProvenance['project_reference'] === 'SIGWM-TEST', 'Upload provenance did not retain the public project reference snapshot.');
 
     REDCap::$data = array(
         'R-001' => array(417 => array('participant_signature' => '98137'))
@@ -590,6 +602,7 @@ namespace {
     moduleAssert($storedBinding['repeat_instance'] === null, 'Classic binding did not normalize repeat context.');
     moduleAssert($storedBinding['capture_origin'] === 'data_entry' && $storedBinding['save_origin'] === 'data_entry', 'Classic binding did not retain its origin audit fields.');
     moduleAssert($storedBinding['capture_username'] === 'data-entry-user' && $storedBinding['save_username'] === 'data-entry-user', 'Classic binding did not retain its username audit fields.');
+    moduleAssert($storedBinding['project_reference'] === 'SIGWM-TEST', 'Binding did not retain the public project reference snapshot.');
     moduleAssert(isset($storedBinding['binding_mac']), 'Binding MAC was not stored.');
 
     $module->redcap_save_record(123, 'R-001', 'consent', 417, null, null, null, 1);

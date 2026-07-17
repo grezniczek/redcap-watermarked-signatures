@@ -163,6 +163,7 @@ $binding = array(
     'capture_ref' => 'S-1111-2222-3333-4',
     'context_ref' => 'C-1111-2222-3333-4',
     'record_ref' => null,
+    'project_reference' => null,
     'capture_origin' => 'data_entry',
     'capture_username' => 'capture-user',
     'save_origin' => 'data_entry',

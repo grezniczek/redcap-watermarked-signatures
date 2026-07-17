@@ -30,6 +30,7 @@ $verificationPage = array(
     'detail_labels' => array(
         'capture_ref' => 'Capture reference',
         'context_ref' => 'Context reference',
+        'project_reference' => 'Public project reference',
         'anchor' => 'Visible anchor',
         'record_id' => 'Record ID',
         'event_id' => 'Event ID',

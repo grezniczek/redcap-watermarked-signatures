@@ -497,9 +497,13 @@ A compact band should provide the full visible identifiers and timestamp.
 Example:
 
 ```text
-WM1 · A:7K4M-P8Q2-X5DN · C:8D3Q-K7H2-R5NW
-S:5N6T-P4WC-X8Q2 · 2026-07-16T14:32:05Z
+WM1 S:5N6T-P4WC-X8Q2 A:7K4M-P8Q2-X5DN C:8D3Q-K7H2-R5NW
+TS:2026-07-16T14:32:05Z REF:PUBLIC-STUDY-ACRONYM
 ```
+
+`TS:` is the server-generated UTC capture timestamp, not an assertion of the
+signer's identity or a qualified signing time. `REF:` appears on the second
+line only when the optional public project reference is configured.
 
 The footer must not contain:
 
@@ -511,6 +515,15 @@ The footer must not contain:
 - repeat instance.
 
 It may contain a configurable project or institution logo, but the identifiers must remain meaningful without the logo.
+
+An optional project-level **public project reference** may be printed as
+`REF:<reference>`. This is a short, opt-in acronym or identifier, not the
+REDCap PID or project title. It is a visual recognition aid only and does not
+replace the cryptographic anchor. The value must be capped at 30 safe ASCII
+characters and snapshotted in upload provenance because changing the setting
+must not rewrite the meaning of an existing image. Since it is visible in image
+exports and screenshots, it must be left blank when the reference would reveal
+sensitive project information.
 
 ## 9.3 Rendering order
 
@@ -1301,7 +1314,8 @@ Project-level settings:
 - watermark opacity;
 - footer visibility;
 - project verification permission/role requirements;
-- optional short public project label;
+- optional public project reference/acronym (not a PID or project title; it is
+  visibly printed and therefore must be safe to disclose);
 - fail behavior on upload watermark error.
 
 Per-field selection should use actual signature field metadata, not arbitrary text entry.

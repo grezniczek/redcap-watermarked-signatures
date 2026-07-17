@@ -109,6 +109,7 @@ $service->result = array(
         'captured_at' => '2026-07-17T13:00:00Z',
         'edoc_id' => 1903,
         'file_sha256' => str_repeat('a', 64),
+        'project_reference' => 'SIGWM-TEST',
         'watermark_version' => 1,
         'envelope_nonce' => 'must-not-be-presented'
     ),
@@ -140,6 +141,7 @@ adminUiAssert($repository->requestedEdocId === 1903, 'Administrator diagnostics 
 adminUiAssert($presented['details']['upload_project_id'] === 461, 'Upload project ID was not presented.');
 adminUiAssert($presented['details']['binding_log_id'] === 88, 'Binding log ID was not presented.');
 adminUiAssert($presented['details']['record_id'] === '12', 'Administrator details did not present the current record ID.');
+adminUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Administrator details did not present the public project reference.');
 adminUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive verification values escaped administrator details.');
 adminUiAssert($repository->requestedRenameProjectId === 461 && $repository->requestedRenameRecordId === '12', 'Administrator history did not use the current binding record.');
 adminUiAssert(count($presented['diagnostics']) === 2, 'Administrator diagnostic history was not presented.');

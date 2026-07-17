@@ -89,7 +89,8 @@ class ProjectVerificationController
 
         $this->copy($details, $upload, array(
             'capture_ref', 'context_ref', 'anchor', 'capture_origin',
-            'capture_username', 'captured_at', 'edoc_id', 'file_sha256'
+            'capture_username', 'captured_at', 'edoc_id', 'file_sha256',
+            'project_reference'
         ));
         $this->copy($details, $binding, array(
             'event_id', 'instrument', 'field', 'repeat_type',

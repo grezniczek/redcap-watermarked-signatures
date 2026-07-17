@@ -169,7 +169,7 @@ class LogRepository
         }
 
         $result = $this->queryLogsPrimary(
-            'select log_id, timestamp, username, project_id, record, message, edoc_id, capture_ref, context_ref, anchor, event_id, instrument, field, capture_origin, capture_username, save_origin, save_username, bound_at, technical_message, original_log_id, binding_log_id where edoc_id = ? and project_id >= 0 order by log_id asc',
+            'select log_id, timestamp, username, project_id, record, message, edoc_id, capture_ref, context_ref, project_reference, anchor, event_id, instrument, field, capture_origin, capture_username, save_origin, save_username, bound_at, technical_message, original_log_id, binding_log_id where edoc_id = ? and project_id >= 0 order by log_id asc',
             array($edocId)
         );
         $events = array();
@@ -291,6 +291,7 @@ class LogRepository
             'anchor' => $event['anchor'],
             'capture_ref' => $event['capture_ref'],
             'context_ref' => $event['context_ref'],
+            'project_reference' => $event['project_reference'],
             'capture_origin' => $event['capture_origin'],
             'capture_username' => $event['capture_username'],
             'save_origin' => $event['save_origin'],

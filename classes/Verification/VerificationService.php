@@ -25,6 +25,7 @@ class VerificationService
         'capture_ref',
         'context_ref',
         'record_ref',
+        'project_reference',
         'capture_origin',
         'capture_username',
         'edoc_id',

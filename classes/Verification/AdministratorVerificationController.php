@@ -82,6 +82,7 @@ class AdministratorVerificationController
         $this->copy($details, $upload, array(
             'capture_ref', 'context_ref', 'anchor', 'capture_origin',
             'capture_username', 'captured_at', 'edoc_id', 'file_sha256',
+            'project_reference',
             'watermark_version'
         ));
         $this->copy($details, $binding, array(
@@ -145,7 +146,7 @@ class AdministratorVerificationController
             $entry = array();
             $this->copy($entry, $diagnostic, array(
                 'log_id', 'timestamp', 'username', 'project_id', 'record',
-                'message', 'edoc_id', 'capture_ref', 'context_ref', 'anchor',
+                'message', 'edoc_id', 'capture_ref', 'context_ref', 'project_reference', 'anchor',
                 'event_id', 'instrument', 'field', 'capture_origin',
                 'capture_username', 'save_origin', 'save_username', 'bound_at',
                 'technical_message', 'original_log_id', 'binding_log_id',

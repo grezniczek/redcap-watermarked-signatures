@@ -26,6 +26,24 @@ Unbound upload provenance is purged daily after 90 days by default. Set the
 project setting **Retain unbound signature-upload provenance for this many days**
 to `0` to disable automatic purging.
 
+## Optional public project reference
+
+The project-level **Public project reference** setting may contain a short
+public acronym or identifier (1–30 ASCII letters, digits, spaces, dots,
+hyphens, underscores, or slashes). When set, every newly captured signature
+visibly includes `REF:<reference>` in its footer.
+
+This is a presentation aid only: it is not the REDCap project ID and does not
+replace the cryptographic anchor. It is snapshotted at capture time, so later
+setting changes do not alter existing images or provenance. Because the value
+is visible in the signature image, including exports and screenshots, leave it
+blank unless disclosing that reference is appropriate for the project. Do not
+use a project title or other sensitive information.
+
+The footer labels the server-generated UTC capture time as `TS:`. It is a
+timestamp for the image capture process, not an assertion of signer identity
+or a qualified signing time.
+
 See [DEV_DOCS/implementation_plan.md](DEV_DOCS/implementation_plan.md) and
 [DEV_DOCS/hook_discovery.md](DEV_DOCS/hook_discovery.md) for the implementation
 and verification design.

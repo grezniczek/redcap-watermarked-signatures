@@ -349,6 +349,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                         "capture_ref" => $upload["capture_ref"],
                         "context_ref" => $upload["context_ref"],
                         "record_ref" => $upload["record_ref"] ?? null,
+                        "project_reference" => $upload["project_reference"] ?? null,
                         "capture_origin" => $upload["capture_origin"],
                         "capture_username" => $upload["capture_username"],
                         "save_origin" => $saveOrigin,
@@ -397,6 +398,10 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         if (!array_key_exists("capture_username", $upload)
             || ($upload["capture_username"] !== null && !is_string($upload["capture_username"]))) {
             throw new \UnexpectedValueException("Upload provenance contains an invalid capture username.");
+        }
+        if (!array_key_exists("project_reference", $upload)
+            || !$this->is_valid_public_project_reference($upload["project_reference"])) {
+            throw new \UnexpectedValueException("Upload provenance contains an invalid public project reference.");
         }
 
         $scope = array(
@@ -623,6 +628,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                 // authoritative record ID is attached only after a successful
                 // save. Stable record pseudonyms are intentionally deferred.
                 "record_ref" => null,
+                "project_reference" => $this->public_project_reference(),
                 "issued_at" => $now,
                 "expires_at" => $now + self::ENVELOPE_TTL_SECONDS,
                 "nonce" => ReferenceGenerator::nonce(),
@@ -692,7 +698,8 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                 $anchor,
                 $payload["context_ref"],
                 $captureReference,
-                $capturedAt
+                $capturedAt,
+                $payload["project_reference"]
             );
         } catch (Throwable $exception) {
             $this->fail_upload($field, "sigwm_error_upload_render", $exception->getMessage());
@@ -705,6 +712,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             "capture_ref" => $captureReference,
             "context_ref" => $payload["context_ref"],
             "record_ref" => isset($payload["record_ref"]) ? $payload["record_ref"] : null,
+            "project_reference" => $payload["project_reference"],
             "capture_origin" => $payload["capture_origin"],
             "capture_username" => $this->current_username(),
             "anchor" => $anchor,
@@ -725,7 +733,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
     {
         $required = array(
             "v", "pid", "event_id", "instrument", "field", "context_ref",
-            "record_ref", "capture_origin", "issued_at", "expires_at", "nonce", "purpose"
+            "record_ref", "project_reference", "capture_origin", "issued_at", "expires_at", "nonce", "purpose"
         );
         foreach ($required as $key) {
             if (!array_key_exists($key, $payload)) {
@@ -769,6 +777,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         if ($payload["record_ref"] !== null
             && (!is_string($payload["record_ref"]) || !preg_match('/^R-[0-9A-HJKMNP-TV-Z-]+$/', $payload["record_ref"]))) {
             throw new \UnexpectedValueException("Invalid envelope record reference.");
+        }
+        if (!$this->is_valid_public_project_reference($payload["project_reference"])) {
+            throw new \UnexpectedValueException("Invalid envelope public project reference.");
         }
         if (!is_string($payload["nonce"]) || !preg_match('/^[A-Za-z0-9_-]{20,64}$/', $payload["nonce"])) {
             throw new \UnexpectedValueException("Invalid envelope nonce.");
@@ -825,6 +836,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             $this->log("sigwm_upload", array(
                 "capture_ref" => $event["capture_ref"],
                 "context_ref" => $event["context_ref"],
+                "project_reference" => $event["project_reference"],
                 "capture_origin" => $event["capture_origin"],
                 "capture_username" => $event["capture_username"],
                 "anchor" => $event["anchor"],
@@ -968,6 +980,33 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         $this->require_proj();
         $setting = $this->getProjectSetting("javascript-debug");
         $this->js_debug = $setting == true;
+    }
+
+    /**
+     * The public reference is deliberately a constrained ASCII presentation
+     * value: it is rendered by GD and becomes visible in every exported image.
+     * It is not a REDCap project ID, title, or a security identifier.
+     */
+    private function public_project_reference()
+    {
+        $reference = trim((string) $this->getProjectSetting('public-project-reference'));
+        if ($reference === '') {
+            return null;
+        }
+        if (!$this->is_valid_public_project_reference($reference)) {
+            throw new \UnexpectedValueException(
+                'The public project reference must be 1–30 ASCII letters, digits, spaces, dots, hyphens, underscores, or slashes.'
+            );
+        }
+        return $reference;
+    }
+
+    private function is_valid_public_project_reference($reference)
+    {
+        return $reference === null
+            || (is_string($reference)
+                && strlen($reference) <= Renderer::MAX_PROJECT_REFERENCE_LENGTH
+                && preg_match('/^[A-Za-z0-9][A-Za-z0-9 ._\/-]*$/D', $reference));
     }
 
     private function unbound_upload_retention_days($projectId)
