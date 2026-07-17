@@ -54,9 +54,9 @@ $diagnosticSummaryLabels = array(
     .sigwm-verification .card-header.p-3 { padding-top: .6rem !important; padding-bottom: .6rem !important; }
     .sigwm-verification .alert { padding-top: .6rem; padding-bottom: .6rem; }
     .sigwm-verification .sigwm-result-table > tbody > tr > th,
-    .sigwm-verification .sigwm-result-table > tbody > tr > td { padding-top: .15rem; padding-bottom: .15rem; }
+    .sigwm-verification .sigwm-result-table > tbody > tr > td { padding-top: .15rem; padding-bottom: .15rem; font-weight: normal; }
     .sigwm-verification .sigwm-result-table th { width: 260px; }
-    .sigwm-verification.sigwm-administrator .sigwm-result-table th { width: 280px; }
+    .sigwm-verification.sigwm-administrator .sigwm-result-table th { width: 280px; font-weight: normal;}
     .sigwm-verification .sigwm-diagnostic-entry + .sigwm-diagnostic-entry .sigwm-diagnostic-event-row > th,
     .sigwm-verification .sigwm-diagnostic-entry + .sigwm-diagnostic-entry .sigwm-diagnostic-event-row > td { border-top: 1px solid #444 !important; }
     .sigwm-verification .sigwm-diagnostic-json { margin: 0; border: 0; background-color: transparent; white-space: pre-wrap; font-size: .8125rem; }
