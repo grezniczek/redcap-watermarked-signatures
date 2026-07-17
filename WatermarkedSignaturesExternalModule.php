@@ -41,6 +41,8 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
     const ENVELOPE_TTL_SECONDS = 14400;
     const ENVELOPE_MAX_TTL_SECONDS = 28800;
     const CLOCK_SKEW_SECONDS = 300;
+    const ORIGIN_DATA_ENTRY = "data_entry";
+    const ORIGIN_SURVEY = "survey";
 
     #region Hooks
 
@@ -48,14 +50,14 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
     {
         $this->init_proj($project_id);
         $this->init_config();
-        $this->inject_capture_envelopes($instrument, $event_id);
+        $this->inject_capture_envelopes($instrument, $event_id, self::ORIGIN_DATA_ENTRY);
     }
 
     function redcap_survey_page($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance)
     {
         $this->init_proj($project_id);
         $this->init_config();
-        $this->inject_capture_envelopes($instrument, $event_id);
+        $this->inject_capture_envelopes($instrument, $event_id, self::ORIGIN_SURVEY);
     }
 
     /**
@@ -88,7 +90,15 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         $this->init_config();
 
         try {
-            $this->bind_saved_signatures($record, $instrument, $event_id, $repeat_instance);
+            $saveOrigin = $survey_hash === null ? self::ORIGIN_DATA_ENTRY : self::ORIGIN_SURVEY;
+            $this->bind_saved_signatures(
+                $record,
+                $instrument,
+                $event_id,
+                $repeat_instance,
+                $saveOrigin,
+                $this->current_username()
+            );
         } catch (Throwable $exception) {
             // The record save has already succeeded. Preserve REDCap data and
             // surface the binding failure through the append-only technical log.
@@ -117,7 +127,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
     #region Private Helpers
 
-    private function bind_saved_signatures($record, $instrument, $eventId, $repeatInstance)
+    private function bind_saved_signatures($record, $instrument, $eventId, $repeatInstance, $saveOrigin, $saveUsername)
     {
         $fields = $this->get_configured_signature_fields($instrument);
         if (empty($fields)) {
@@ -185,6 +195,10 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                         "capture_ref" => $upload["capture_ref"],
                         "context_ref" => $upload["context_ref"],
                         "record_ref" => $upload["record_ref"] ?? null,
+                        "capture_origin" => $upload["capture_origin"],
+                        "capture_username" => $upload["capture_username"],
+                        "save_origin" => $saveOrigin,
+                        "save_username" => $saveUsername,
                         "edoc_id" => $edocId,
                         "file_sha256" => $upload["file_sha256"],
                         "watermark_version" => (int) $upload["watermark_version"]
@@ -222,6 +236,13 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         }
         if (!isset($upload["file_sha256"]) || !preg_match('/^[a-f0-9]{64}$/', $upload["file_sha256"])) {
             throw new \UnexpectedValueException("Upload provenance contains an invalid file digest.");
+        }
+        if (!isset($upload["capture_origin"]) || !$this->is_valid_origin($upload["capture_origin"])) {
+            throw new \UnexpectedValueException("Upload provenance contains an invalid capture origin.");
+        }
+        if (!array_key_exists("capture_username", $upload)
+            || ($upload["capture_username"] !== null && !is_string($upload["capture_username"]))) {
+            throw new \UnexpectedValueException("Upload provenance contains an invalid capture username.");
         }
 
         $scope = array(
@@ -263,8 +284,29 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         return $now->format("Y-m-d\\TH:i:s.v\\Z");
     }
 
-    private function inject_capture_envelopes($instrument, $event_id)
+    private function current_username()
     {
+        $username = null;
+        if (class_exists("\\ExternalModules\\ExternalModules")
+            && method_exists("\\ExternalModules\\ExternalModules", "getUsername")) {
+            $username = \ExternalModules\ExternalModules::getUsername();
+        } elseif (defined("USERID")) {
+            $username = USERID;
+        }
+
+        return $username === null || $username === "" ? null : (string) $username;
+    }
+
+    private function is_valid_origin($origin)
+    {
+        return $origin === self::ORIGIN_DATA_ENTRY || $origin === self::ORIGIN_SURVEY;
+    }
+
+    private function inject_capture_envelopes($instrument, $event_id, $captureOrigin)
+    {
+        if (!$this->is_valid_origin($captureOrigin)) {
+            throw new \InvalidArgumentException("Invalid signature capture origin.");
+        }
         $fields = $this->get_configured_signature_fields($instrument);
         if (empty($fields)) {
             return;
@@ -281,6 +323,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                 "event_id" => (int) $event_id,
                 "instrument" => (string) $instrument,
                 "field" => (string) $field,
+                "capture_origin" => $captureOrigin,
                 "context_ref" => ReferenceGenerator::contextReference(),
                 // Do not capture REDCap's tentative new-record value. The
                 // authoritative record ID is attached only after a successful
@@ -368,6 +411,8 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             "capture_ref" => $captureReference,
             "context_ref" => $payload["context_ref"],
             "record_ref" => isset($payload["record_ref"]) ? $payload["record_ref"] : null,
+            "capture_origin" => $payload["capture_origin"],
+            "capture_username" => $this->current_username(),
             "anchor" => $anchor,
             "pid" => (int) $payload["pid"],
             "event_id" => (int) $payload["event_id"],
@@ -386,7 +431,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
     {
         $required = array(
             "v", "pid", "event_id", "instrument", "field", "context_ref",
-            "record_ref", "issued_at", "expires_at", "nonce", "purpose"
+            "record_ref", "capture_origin", "issued_at", "expires_at", "nonce", "purpose"
         );
         foreach ($required as $key) {
             if (!array_key_exists($key, $payload)) {
@@ -420,6 +465,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         }
         if (!is_string($payload["field"]) || $payload["field"] !== $postedField) {
             throw new \UnexpectedValueException("Envelope field mismatch.");
+        }
+        if (!$this->is_valid_origin($payload["capture_origin"])) {
+            throw new \UnexpectedValueException("Invalid envelope capture origin.");
         }
         if (!is_string($payload["context_ref"]) || !preg_match('/^C-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/', $payload["context_ref"])) {
             throw new \UnexpectedValueException("Invalid envelope context reference.");
@@ -483,6 +531,8 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             $this->log("sigwm_upload", array(
                 "capture_ref" => $event["capture_ref"],
                 "context_ref" => $event["context_ref"],
+                "capture_origin" => $event["capture_origin"],
+                "capture_username" => $event["capture_username"],
                 "anchor" => $event["anchor"],
                 "event_id" => $event["event_id"],
                 "instrument" => $event["instrument"],

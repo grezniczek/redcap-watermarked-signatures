@@ -287,6 +287,7 @@ base64url(canonical_json) + "." + base64url(hmac)
   "event_id": 417,
   "instrument": "consent",
   "field": "participant_signature",
+  "capture_origin": "data_entry",
   "context_ref": "C-8D3Q-K7H2-R5NW",
   "record_ref": "R-7M4K-2C9P",
   "issued_at": 1784212200,
@@ -297,7 +298,6 @@ base64url(canonical_json) + "." + base64url(hmac)
 
 Depending on what is reliable in the relevant REDCap context, the envelope may additionally contain:
 
-- authenticated username;
 - survey response/session reference;
 - page/request identifier;
 - current record ID when already known;
@@ -305,6 +305,11 @@ Depending on what is reliable in the relevant REDCap context, the envelope may a
 - watermark layout version;
 - expected field type;
 - expected upload purpose, fixed to `signature`.
+
+`capture_origin` is mandatory and is set by the server-side rendering hook to
+either `data_entry` or `survey`. The authenticated username is deliberately not
+accepted from the envelope; it is snapshotted independently by the server when
+the upload provenance event is created.
 
 ### 7.2 Envelope reuse
 
@@ -417,6 +422,10 @@ binding_mac = HMAC-SHA-256(
         capture_ref,
         context_ref,
         record_ref,
+        capture_origin,
+        capture_username,
+        save_origin,
+        save_username,
         actual_record_id,
         project_id,
         event_id,
@@ -581,6 +590,8 @@ Example payload:
   "capture_ref": "S-5N6T-P4WC-X8Q2",
   "context_ref": "C-8D3Q-K7H2-R5NW",
   "record_ref": "R-7M4K-2C9P",
+  "capture_origin": "data_entry",
+  "capture_username": "alice",
   "anchor": "7K4M-P8Q2-X5DN-R7CW",
   "pid": 123,
   "event_id": 417,
@@ -707,6 +718,10 @@ Example payload:
   "capture_ref": "S-5N6T-P4WC-X8Q2",
   "context_ref": "C-8D3Q-K7H2-R5NW",
   "record_ref": "R-7M4K-2C9P",
+  "capture_origin": "data_entry",
+  "capture_username": "alice",
+  "save_origin": "data_entry",
+  "save_username": "alice",
   "record_id": "10427",
   "pid": 123,
   "event_id": 417,
@@ -724,6 +739,19 @@ Example payload:
 
 Use explicit `null` values for non-repeating contexts if that is part of the canonical binding format.
 
+The capture and save origins are derived independently and must match when the
+first binding is created. A mismatch creates `sigwm_error_origin_mismatch` and
+no successful binding. Once an edoc is already bound, later saves remain
+idempotent even if the form is subsequently opened through another channel; the
+stored origin fields continue to describe the original capture and first
+successful binding.
+
+The username fields are nullable server-side snapshots of the authenticated
+REDCap operator at each stage. They identify neither a public survey respondent
+nor the person represented by the signature. A difference between capture and
+save usernames is retained for audit but does not block binding. Survey hashes
+must never be logged.
+
 ---
 
 ## 15. Error events
@@ -734,6 +762,7 @@ Suggested event types:
 sigwm_error_invalid_envelope
 sigwm_error_expired_envelope
 sigwm_error_scope_mismatch
+sigwm_error_origin_mismatch
 sigwm_error_missing_provenance
 sigwm_error_edoc_already_bound
 sigwm_error_capture_edoc_conflict

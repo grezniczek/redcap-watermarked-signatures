@@ -14,6 +14,7 @@ class LogRepository
     const RESULT_IDEMPOTENT = 'idempotent';
     const RESULT_CONFLICT = 'conflict';
     const RESULT_INVALID_EXISTING_MAC = 'invalid_existing_mac';
+    const RESULT_ORIGIN_MISMATCH = 'origin_mismatch';
     const LOCK_TIMEOUT_SECONDS = 10;
 
     private $module;
@@ -52,6 +53,10 @@ class LogRepository
             // Query again only after acquiring the per-edoc lock.
             $existing = $this->findBindingByEdocId($edocId);
             if ($existing === null) {
+                if ($binding['capture_origin'] !== $binding['save_origin']) {
+                    $this->appendOriginMismatch($binding);
+                    return self::RESULT_ORIGIN_MISMATCH;
+                }
                 $event = $binding;
                 $event['binding_mac'] = $this->bindingMac->create($event);
                 $this->appendBinding($event);
@@ -130,6 +135,10 @@ class LogRepository
             'anchor' => $event['anchor'],
             'capture_ref' => $event['capture_ref'],
             'context_ref' => $event['context_ref'],
+            'capture_origin' => $event['capture_origin'],
+            'capture_username' => $event['capture_username'],
+            'save_origin' => $event['save_origin'],
+            'save_username' => $event['save_username'],
             'event_id' => $event['event_id'],
             'instrument' => $event['instrument'],
             'field' => $event['field'],
@@ -137,6 +146,20 @@ class LogRepository
             'binding_mac' => $event['binding_mac'],
             'bound_at' => $event['bound_at'],
             'payload_json' => CanonicalJson::encode($event)
+        ));
+    }
+
+    private function appendOriginMismatch($attempted)
+    {
+        $this->module->log('sigwm_error_origin_mismatch', array(
+            'record' => $attempted['record_id'],
+            'edoc_id' => $attempted['edoc_id'],
+            'capture_origin' => $attempted['capture_origin'],
+            'capture_username' => $attempted['capture_username'],
+            'save_origin' => $attempted['save_origin'],
+            'save_username' => $attempted['save_username'],
+            'technical_message' => 'Signature capture and first-save origins do not match.',
+            'payload_json' => CanonicalJson::encode($attempted)
         ));
     }
 

@@ -163,6 +163,10 @@ $binding = array(
     'capture_ref' => 'S-1111-2222-3333-4',
     'context_ref' => 'C-1111-2222-3333-4',
     'record_ref' => null,
+    'capture_origin' => 'data_entry',
+    'capture_username' => 'capture-user',
+    'save_origin' => 'data_entry',
+    'save_username' => 'save-user',
     'record_id' => 'R-001',
     'pid' => 123,
     'event_id' => 417,
@@ -187,14 +191,27 @@ bindingAssert(!$mac->verify($tamperedBinding), 'Binding MAC did not detect a cha
 $tamperedAnchorBinding = $bindingWithMac;
 $tamperedAnchorBinding['anchor'] = 'EEEE-FFFF-GGGG-HHHH';
 bindingAssert(!$mac->verify($tamperedAnchorBinding), 'Binding MAC did not detect a changed anchor.');
+$tamperedOriginBinding = $bindingWithMac;
+$tamperedOriginBinding['capture_origin'] = 'survey';
+bindingAssert(!$mac->verify($tamperedOriginBinding), 'Binding MAC did not detect a changed capture origin.');
+$tamperedUsernameBinding = $bindingWithMac;
+$tamperedUsernameBinding['save_username'] = 'other-user';
+bindingAssert(!$mac->verify($tamperedUsernameBinding), 'Binding MAC did not detect a changed username snapshot.');
 
 $module = new BindingTestModule();
 $GLOBALS['bindingPrimaryModule'] = $module;
 $repository = new LogRepository($module, $mac);
 bindingAssert($repository->bindOnce($binding) === LogRepository::RESULT_BOUND, 'First binding was not appended.');
 bindingAssert($module->events[0]['parameters']['anchor'] === $binding['anchor'], 'Binding log did not expose the anchor parameter.');
+bindingAssert($module->events[0]['parameters']['capture_origin'] === 'data_entry', 'Binding log did not expose the capture origin.');
+bindingAssert($module->events[0]['parameters']['save_origin'] === 'data_entry', 'Binding log did not expose the save origin.');
 bindingAssert($repository->bindOnce($binding) === LogRepository::RESULT_IDEMPOTENT, 'Identical binding was not idempotent.');
 bindingAssert(count(array_filter($module->events, function ($event) { return $event['message'] === 'sigwm_bind'; })) === 1, 'Idempotent binding appended a duplicate.');
+$laterSave = $binding;
+$laterSave['save_origin'] = 'survey';
+$laterSave['save_username'] = null;
+bindingAssert($repository->bindOnce($laterSave) === LogRepository::RESULT_IDEMPOTENT, 'A later save through another channel was not idempotent.');
+bindingAssert(count($module->events) === 1, 'A later save through another channel appended an audit error for an existing binding.');
 
 $conflicting = $binding;
 $conflicting['record_id'] = 'R-002';
@@ -215,9 +232,20 @@ foreach ($module->events as &$event) {
 unset($event);
 bindingAssert($repository->bindOnce($binding) === LogRepository::RESULT_INVALID_EXISTING_MAC, 'Invalid existing MAC was not detected.');
 bindingAssert(end($module->events)['message'] === 'sigwm_error_binding_mac', 'Invalid binding MAC did not append the expected error.');
-bindingAssert($module->releaseCount === 4, 'A binding lock was not released.');
+bindingAssert($module->releaseCount === 5, 'A binding lock was not released.');
 bindingAssert($GLOBALS['bindingPrimaryQueryCount'] > 0, 'Primary database query path was not exercised.');
 bindingAssert($GLOBALS['bindingPrimaryLogQueryCount'] > 0, 'Binding lookup did not use the primary database path.');
+
+$mismatchModule = new BindingTestModule();
+$GLOBALS['bindingPrimaryModule'] = $mismatchModule;
+$mismatchRepository = new LogRepository($mismatchModule, $mac);
+$originMismatch = $binding;
+$originMismatch['capture_origin'] = 'survey';
+bindingAssert($mismatchRepository->bindOnce($originMismatch) === LogRepository::RESULT_ORIGIN_MISMATCH, 'First-binding origin mismatch was not rejected.');
+bindingAssert($mismatchModule->events[0]['message'] === 'sigwm_error_origin_mismatch', 'Origin mismatch did not append its dedicated error event.');
+bindingAssert($mismatchModule->events[0]['parameters']['capture_origin'] === 'survey', 'Origin mismatch log did not expose the capture origin.');
+bindingAssert($mismatchModule->events[0]['parameters']['save_origin'] === 'data_entry', 'Origin mismatch log did not expose the save origin.');
+bindingAssert(count(array_filter($mismatchModule->events, function ($event) { return $event['message'] === 'sigwm_bind'; })) === 0, 'Origin mismatch appended a binding.');
 
 $lockedModule = new BindingTestModule();
 $lockedModule->lockAcquired = false;

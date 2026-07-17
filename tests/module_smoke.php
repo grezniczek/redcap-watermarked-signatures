@@ -1,6 +1,16 @@
 <?php
 
 namespace ExternalModules {
+    class ExternalModules
+    {
+        public static $username = null;
+
+        public static function getUsername()
+        {
+            return self::$username;
+        }
+    }
+
     class AbstractExternalModule
     {
         public $framework;
@@ -181,7 +191,7 @@ namespace {
         return $method->invokeArgs($object, $arguments);
     }
 
-    function uploadProvenance($field, $edocId)
+    function uploadProvenance($field, $edocId, $captureOrigin = 'data_entry', $captureUsername = 'capture-user')
     {
         $scope = array(
             'v' => 1,
@@ -195,6 +205,8 @@ namespace {
             'capture_ref' => ReferenceGenerator::captureReference(),
             'context_ref' => ReferenceGenerator::contextReference(),
             'record_ref' => null,
+            'capture_origin' => $captureOrigin,
+            'capture_username' => $captureUsername,
             'anchor' => Anchor::create($scope, KeyDerivation::derive(KeyDerivation::ANCHOR_INFO)),
             'pid' => 123,
             'event_id' => 417,
@@ -278,6 +290,7 @@ namespace {
         'event_id' => 417,
         'instrument' => 'consent',
         'field' => 'participant_signature',
+        'capture_origin' => 'data_entry',
         'context_ref' => ReferenceGenerator::contextReference(),
         'record_ref' => null,
         'issued_at' => $now,
@@ -292,7 +305,7 @@ namespace {
     setPrivateProperty($multiEnvelopeModule, 'proj', new FakeProject(null, true));
     setPrivateProperty($multiEnvelopeModule, 'project_id', 123);
     ob_start();
-    invokePrivate($multiEnvelopeModule, 'inject_capture_envelopes', array('consent', 417));
+    invokePrivate($multiEnvelopeModule, 'inject_capture_envelopes', array('consent', 417, 'data_entry'));
     $multiEnvelopeHtml = ob_get_clean();
     moduleAssert(
         preg_match('/window\.REDCapSignatureWatermark=(\{.*?\});<\/script>/s', $multiEnvelopeHtml, $configMatch) === 1,
@@ -310,11 +323,13 @@ namespace {
     $autoNumberModule->framework = new FakeFramework();
     setPrivateProperty($autoNumberModule, 'proj', new FakeProject());
     setPrivateProperty($autoNumberModule, 'project_id', 123);
+    \ExternalModules\ExternalModules::$username = 'auto-capture-user';
     ob_start();
     $autoNumberModule->redcap_data_entry_form(123, null, 'consent', 417, null, 1);
     $autoNumberHtml = ob_get_clean();
     $autoNumberConfig = injectedConfig($autoNumberHtml);
     $autoNumberEnvelope = $signer->verify($autoNumberConfig['envelopes']['participant_signature']);
+    moduleAssert($autoNumberEnvelope['capture_origin'] === 'data_entry', 'Data-entry envelope did not identify its capture origin.');
     moduleAssert($autoNumberEnvelope['record_ref'] === null, 'Tentative auto-number record leaked into the capture envelope.');
     moduleAssert(!array_key_exists('record_id', $autoNumberEnvelope), 'Capture envelope contained a pre-save record ID.');
     $autoNumberUpload = captureSignatureUpload(
@@ -323,25 +338,37 @@ namespace {
         $originalPng,
         99501
     );
+    moduleAssert($autoNumberUpload['capture_origin'] === 'data_entry', 'Data-entry upload provenance lost its capture origin.');
+    moduleAssert($autoNumberUpload['capture_username'] === 'auto-capture-user', 'Upload provenance did not snapshot the authenticated capture username.');
     moduleAssert(count(payloadsForMessage($autoNumberModule, 'sigwm_bind')) === 0, 'Auto-number upload bound before record creation.');
     REDCap::$data = array(
         '1007' => array(417 => array('participant_signature' => '99501'))
     );
+    \ExternalModules\ExternalModules::$username = 'auto-save-user';
     $autoNumberModule->redcap_save_record(123, '1007', 'consent', 417, null, null, null, 1);
     $autoNumberBinding = payloadsForMessage($autoNumberModule, 'sigwm_bind')[0];
     moduleAssert($autoNumberBinding['record_id'] === '1007', 'Auto-number binding did not use REDCap\'s authoritative record ID.');
     moduleAssert($autoNumberBinding['context_ref'] === $autoNumberUpload['context_ref'], 'Auto-number binding lost its pre-save context reference.');
     moduleAssert($autoNumberBinding['record_ref'] === null, 'Deferred record pseudonym was not represented explicitly as null.');
+    moduleAssert($autoNumberBinding['capture_origin'] === 'data_entry' && $autoNumberBinding['save_origin'] === 'data_entry', 'Data-entry binding did not retain matching origins.');
+    moduleAssert($autoNumberBinding['capture_username'] === 'auto-capture-user', 'Binding lost the capture username snapshot.');
+    moduleAssert($autoNumberBinding['save_username'] === 'auto-save-user', 'Binding did not snapshot the save username.');
+    moduleAssert($autoNumberModule->logs[1][1]['capture_origin'] === 'data_entry', 'Binding capture origin is not directly inspectable.');
+    moduleAssert($autoNumberModule->logs[1][1]['save_origin'] === 'data_entry', 'Binding save origin is not directly inspectable.');
+    moduleAssert($autoNumberModule->logs[1][1]['capture_username'] === 'auto-capture-user', 'Binding capture username is not directly inspectable.');
+    moduleAssert($autoNumberModule->logs[1][1]['save_username'] === 'auto-save-user', 'Binding save username is not directly inspectable.');
 
     $surveyModule = new WatermarkedSignaturesExternalModule();
     $surveyModule->framework = new FakeFramework();
     setPrivateProperty($surveyModule, 'proj', new FakeProject());
     setPrivateProperty($surveyModule, 'project_id', 123);
+    \ExternalModules\ExternalModules::$username = null;
     ob_start();
     $surveyModule->redcap_survey_page(123, null, 'consent', 417, null, 'public-survey-hash', null, 1);
     $surveyHtml = ob_get_clean();
     $surveyConfig = injectedConfig($surveyHtml);
     $surveyEnvelope = $signer->verify($surveyConfig['envelopes']['participant_signature']);
+    moduleAssert($surveyEnvelope['capture_origin'] === 'survey', 'Survey envelope did not identify its capture origin.');
     moduleAssert($surveyEnvelope['record_ref'] === null, 'First-page survey envelope assumed a record ID.');
     moduleAssert(!array_key_exists('record_id', $surveyEnvelope), 'First-page survey envelope exposed a tentative record ID.');
     $surveyUpload = captureSignatureUpload(
@@ -350,6 +377,8 @@ namespace {
         $originalPng,
         99502
     );
+    moduleAssert($surveyUpload['capture_origin'] === 'survey', 'Survey upload provenance lost its capture origin.');
+    moduleAssert($surveyUpload['capture_username'] === null, 'Public survey upload unexpectedly recorded an authenticated username.');
     moduleAssert(count(payloadsForMessage($surveyModule, 'sigwm_bind')) === 0, 'First-page survey upload bound before survey save.');
     REDCap::$data = array(
         'SURVEY-2001' => array(417 => array('participant_signature' => '99502'))
@@ -358,11 +387,18 @@ namespace {
     $surveyBinding = payloadsForMessage($surveyModule, 'sigwm_bind')[0];
     moduleAssert($surveyBinding['record_id'] === 'SURVEY-2001', 'First-page survey binding did not use the created record ID.');
     moduleAssert($surveyBinding['context_ref'] === $surveyUpload['context_ref'], 'First-page survey binding lost its pre-save context reference.');
+    moduleAssert($surveyBinding['capture_origin'] === 'survey' && $surveyBinding['save_origin'] === 'survey', 'Survey binding did not retain matching origins.');
+    moduleAssert($surveyBinding['capture_username'] === null && $surveyBinding['save_username'] === null, 'Public survey binding unexpectedly recorded an authenticated username.');
+    $surveyLogCount = count($surveyModule->logs);
+    \ExternalModules\ExternalModules::$username = 'later-staff-user';
+    $surveyModule->redcap_save_record(123, 'SURVEY-2001', 'consent', 417, null, null, null, 1);
+    moduleAssert(count($surveyModule->logs) === $surveyLogCount, 'A later staff save produced a false origin mismatch for an existing survey binding.');
 
     $abandonedSurveyModule = new WatermarkedSignaturesExternalModule();
     $abandonedSurveyModule->framework = new FakeFramework();
     setPrivateProperty($abandonedSurveyModule, 'proj', new FakeProject());
     setPrivateProperty($abandonedSurveyModule, 'project_id', 123);
+    \ExternalModules\ExternalModules::$username = null;
     ob_start();
     $abandonedSurveyModule->redcap_survey_page(123, null, 'consent', 417, null, 'public-survey-hash', null, 1);
     $abandonedSurveyConfig = injectedConfig(ob_get_clean());
@@ -375,6 +411,23 @@ namespace {
     moduleAssert(count(payloadsForMessage($abandonedSurveyModule, 'sigwm_upload')) === 1, 'Abandoned first-page survey lost upload provenance.');
     moduleAssert(count(payloadsForMessage($abandonedSurveyModule, 'sigwm_bind')) === 0, 'Abandoned first-page survey created a binding.');
 
+    $originMismatchModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($originMismatchModule, 'proj', new FakeProject());
+    setPrivateProperty($originMismatchModule, 'project_id', 123);
+    $originMismatchModule->append_upload_provenance(
+        uploadProvenance('participant_signature', 99504, 'survey', null)
+    );
+    REDCap::$data = array(
+        'ORIGIN-MISMATCH' => array(417 => array('participant_signature' => '99504'))
+    );
+    \ExternalModules\ExternalModules::$username = 'data-entry-user';
+    $originMismatchModule->redcap_save_record(123, 'ORIGIN-MISMATCH', 'consent', 417, null, null, null, 1);
+    moduleAssert(count(payloadsForMessage($originMismatchModule, 'sigwm_bind')) === 0, 'A first binding with mismatched origins was accepted.');
+    moduleAssert($originMismatchModule->logs[1][0] === 'sigwm_error_origin_mismatch', 'Origin mismatch did not append the dedicated error event.');
+    moduleAssert($originMismatchModule->logs[1][1]['capture_origin'] === 'survey', 'Origin mismatch log lost the capture origin.');
+    moduleAssert($originMismatchModule->logs[1][1]['save_origin'] === 'data_entry', 'Origin mismatch log lost the save origin.');
+
+    \ExternalModules\ExternalModules::$username = 'data-entry-user';
     $_SERVER['REQUEST_METHOD'] = 'POST';
     $_GET = array('event_id' => '417', 'instance' => '1');
     $_POST = array(
@@ -405,6 +458,8 @@ namespace {
     moduleAssert($uploadProvenance['file_sha256'] === hash('sha256', $watermarkedPng), 'Provenance digest does not cover the final PNG.');
     moduleAssert($uploadProvenance['watermark_version'] === 1, 'Provenance did not retain the WM1 format version.');
     moduleAssert((bool) preg_match('/Z$/', $uploadProvenance['captured_at']), 'Provenance timestamp is not UTC.');
+    moduleAssert($uploadProvenance['capture_origin'] === 'data_entry', 'Upload provenance did not retain the data-entry origin.');
+    moduleAssert($uploadProvenance['capture_username'] === 'data-entry-user', 'Upload provenance did not retain the current username.');
 
     REDCap::$data = array(
         'R-001' => array(417 => array('participant_signature' => '98137'))
@@ -416,6 +471,8 @@ namespace {
     moduleAssert($storedBinding['anchor'] === $uploadProvenance['anchor'], 'Binding did not retain the visible anchor.');
     moduleAssert($module->logs[1][1]['anchor'] === $uploadProvenance['anchor'], 'Binding anchor is not directly inspectable in the log.');
     moduleAssert($storedBinding['repeat_instance'] === null, 'Classic binding did not normalize repeat context.');
+    moduleAssert($storedBinding['capture_origin'] === 'data_entry' && $storedBinding['save_origin'] === 'data_entry', 'Classic binding did not retain its origin audit fields.');
+    moduleAssert($storedBinding['capture_username'] === 'data-entry-user' && $storedBinding['save_username'] === 'data-entry-user', 'Classic binding did not retain its username audit fields.');
     moduleAssert(isset($storedBinding['binding_mac']), 'Binding MAC was not stored.');
 
     $module->redcap_save_record(123, 'R-001', 'consent', 417, null, null, null, 1);
@@ -497,6 +554,23 @@ namespace {
     $replacementEdocs = array_map(function ($binding) { return $binding['edoc_id']; }, $replacementBindings);
     sort($replacementEdocs);
     moduleAssert($replacementEdocs === array(99002, 99003, 99004), 'A later replacement did not preserve old bindings and bind the new edoc.');
+
+    $invalidOriginModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($invalidOriginModule, 'proj', new FakeProject());
+    setPrivateProperty($invalidOriginModule, 'project_id', 123);
+    $invalidOriginPayload = $payload;
+    $invalidOriginPayload['capture_origin'] = 'api';
+    $_GET = array('event_id' => '417', 'instance' => '1', 'page' => 'consent');
+    $_POST = array(
+        'field_name' => 'participant_signature-linknew',
+        'sigwm_envelope' => $signer->sign($invalidOriginPayload),
+        'myfile_base64' => base64_encode($originalPng)
+    );
+    ob_start();
+    invokePrivate($invalidOriginModule, 'intercept_signature_upload');
+    ob_end_clean();
+    moduleAssert($invalidOriginModule->exitRequested, 'A signed envelope with an unsupported capture origin was accepted.');
+    moduleAssert($invalidOriginModule->logs[0][0] === 'sigwm_error_invalid_envelope', 'Invalid capture origin did not produce an envelope error.');
 
     $scopeMismatchModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($scopeMismatchModule, 'proj', new FakeProject());

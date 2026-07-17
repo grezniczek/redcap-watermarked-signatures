@@ -16,6 +16,34 @@ class BindingMac
         'capture_ref',
         'context_ref',
         'record_ref',
+        'capture_origin',
+        'capture_username',
+        'save_origin',
+        'save_username',
+        'record_id',
+        'pid',
+        'event_id',
+        'instrument',
+        'field',
+        'repeat_type',
+        'repeat_instrument',
+        'repeat_instance',
+        'file_sha256',
+        'watermark_version'
+    );
+
+    // The save actor and channel describe the first binding event, but are not
+    // part of edoc identity. A later save of an already-bound field may occur
+    // through another channel or authenticated account and remains idempotent.
+    private static $identityFields = array(
+        'v',
+        'edoc_id',
+        'anchor',
+        'capture_ref',
+        'context_ref',
+        'record_ref',
+        'capture_origin',
+        'capture_username',
         'record_id',
         'pid',
         'event_id',
@@ -53,19 +81,24 @@ class BindingMac
     public function equals($left, $right)
     {
         return hash_equals(
-            CanonicalJson::encode($this->definingPayload($left)),
-            CanonicalJson::encode($this->definingPayload($right))
+            CanonicalJson::encode($this->payloadForFields($left, self::$identityFields)),
+            CanonicalJson::encode($this->payloadForFields($right, self::$identityFields))
         );
     }
 
     public function definingPayload($binding)
+    {
+        return $this->payloadForFields($binding, self::$definingFields);
+    }
+
+    private function payloadForFields($binding, $fields)
     {
         if (!is_array($binding)) {
             throw new \InvalidArgumentException('Binding must be an array.');
         }
 
         $payload = array();
-        foreach (self::$definingFields as $field) {
+        foreach ($fields as $field) {
             if (!array_key_exists($field, $binding)) {
                 throw new \UnexpectedValueException("Binding property '{$field}' is missing.");
             }
