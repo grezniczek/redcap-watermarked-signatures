@@ -16,6 +16,15 @@
     "auth-ajax-actions": [
     ],
     "links": {
+        "control-center": [
+            {
+                "name": "Administrator signature verification",
+                "key": "administrator-signature-verification",
+                "icon": "fa-solid fa-shield-halved",
+                "url": "pages/admin-verify-signature.php",
+                "show-header-and-footer": true
+            }
+        ],
         "project": [
             {
                 "name": "Verify watermarked signature",

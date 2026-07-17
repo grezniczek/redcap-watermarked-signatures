@@ -13,6 +13,7 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
 use DE\RUB\WatermarkedSignaturesExternalModule\Context\SavedContext;
 use DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository;
 use DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer;
+use DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectAccessPolicy;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectVerificationController;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\RedcapCurrentValueReader;
@@ -32,6 +33,7 @@ require_once "classes/Crypto/BindingMac.php";
 require_once "classes/Context/SavedContext.php";
 require_once "classes/Storage/LogRepository.php";
 require_once "classes/Watermark/Renderer.php";
+require_once "classes/Verification/AdministratorVerificationController.php";
 require_once "classes/Verification/RedcapEdocReader.php";
 require_once "classes/Verification/RedcapCurrentValueReader.php";
 require_once "classes/Verification/VerificationService.php";
@@ -133,7 +135,15 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
     function redcap_module_link_check_display($project_id, $link)
     {
-        if (($link["key"] ?? "") !== "signature-verification") {
+        $linkKey = $link["key"] ?? "";
+        if ($linkKey === "administrator-signature-verification") {
+            try {
+                return $this->getUser()->isSuperUser() ? $link : null;
+            } catch (Throwable $exception) {
+                return null;
+            }
+        }
+        if ($linkKey !== "signature-verification") {
             return parent::redcap_module_link_check_display($project_id, $link);
         }
         if (!is_numeric($project_id) || (int) $project_id < 1) {
@@ -172,6 +182,23 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             new RedcapCurrentValueReader()
         );
         return new ProjectVerificationController($projectId, $repository, $bindingMac, $service, $policy);
+    }
+
+    public function get_administrator_verification_controller()
+    {
+        if (!$this->getUser()->isSuperUser()) {
+            throw new \RuntimeException("Administrator access is required for global signature verification.");
+        }
+
+        $bindingMac = new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO));
+        $repository = new LogRepository($this, $bindingMac);
+        $service = new VerificationService(
+            $repository,
+            $bindingMac,
+            new RedcapEdocReader(),
+            new RedcapCurrentValueReader()
+        );
+        return new AdministratorVerificationController($repository, $service);
     }
 
     #endregion

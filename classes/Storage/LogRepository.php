@@ -67,6 +67,28 @@ class LogRepository
         return $this->findEventByEdocId('sigwm_bind', $edocId);
     }
 
+    /**
+     * Return the technical log history associated with one globally unique edoc.
+     * The administrator presenter selects the fields it may expose.
+     */
+    public function findDiagnosticEventsByEdocId($edocId)
+    {
+        $edocId = (int) $edocId;
+        if ($edocId < 1) {
+            return array();
+        }
+
+        $result = $this->queryLogsPrimary(
+            'select log_id, timestamp, username, project_id, record, message, edoc_id, capture_ref, context_ref, anchor, event_id, instrument, field, capture_origin, capture_username, save_origin, save_username, bound_at, technical_message, original_log_id, binding_log_id where edoc_id = ? and project_id >= 0 order by log_id asc',
+            array($edocId)
+        );
+        $events = array();
+        while ($result && ($row = $result->fetch_assoc())) {
+            $events[] = $row;
+        }
+        return $events;
+    }
+
     public function bindOnce($binding)
     {
         $edocId = (int) $binding['edoc_id'];

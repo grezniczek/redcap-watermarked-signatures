@@ -397,6 +397,21 @@ namespace {
         'group_id' => ''
     ));
     moduleAssert($linkModule->redcap_module_link_check_display(123, $verificationLink) === null, 'User without signature-form access received the verification link.');
+    $administratorVerificationLink = array('key' => 'administrator-signature-verification', 'url' => 'pages/admin-verify-signature.php');
+    moduleAssert($linkModule->redcap_module_link_check_display(null, $administratorVerificationLink) === null, 'Non-administrator received the global verification link.');
+    $administratorFactoryDenied = false;
+    try {
+        $linkModule->get_administrator_verification_controller();
+    } catch (\RuntimeException $exception) {
+        $administratorFactoryDenied = true;
+    }
+    moduleAssert($administratorFactoryDenied, 'Non-administrator reached the global verification controller factory.');
+    $linkModule->testUser = new FakeUser(true, array());
+    moduleAssert($linkModule->redcap_module_link_check_display(null, $administratorVerificationLink) === $administratorVerificationLink, 'Administrator did not receive the global verification link.');
+    moduleAssert(
+        $linkModule->get_administrator_verification_controller() instanceof \DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController,
+        'Administrator could not create the global verification controller.'
+    );
 
     $autoNumberModule = new WatermarkedSignaturesExternalModule();
     $autoNumberModule->framework = new FakeFramework();

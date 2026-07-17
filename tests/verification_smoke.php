@@ -62,6 +62,26 @@ class VerificationModule
     public function queryLogs($sql, $parameters)
     {
         $this->queryCount++;
+        if (strpos($sql, 'where edoc_id = ?') !== false) {
+            $edocId = (int) $parameters[0];
+            $rows = array();
+            foreach ($this->events as $event) {
+                $payload = json_decode($event['payload_json'], true);
+                if ((int) ($payload['edoc_id'] ?? 0) !== $edocId) {
+                    continue;
+                }
+                $rows[] = array_merge(array(
+                    'log_id' => $event['log_id'],
+                    'timestamp' => '2026-07-17 13:02:15',
+                    'username' => 'verification-user',
+                    'project_id' => $event['project_id'],
+                    'record' => $payload['record_id'] ?? '',
+                    'message' => $event['message']
+                ), $payload);
+            }
+            return new VerificationResult($rows);
+        }
+
         $message = $parameters[0];
         $target = $parameters[1];
         $byCaptureReference = strpos($sql, 'capture_ref = ?') !== false;
@@ -244,6 +264,10 @@ verificationAssert($valid['checks']['current_field'] === true, 'Current field wa
 verificationAssert(!array_key_exists('contents', $valid['edoc']), 'Verification result exposed edoc bytes.');
 verificationAssert($service->verify($captureReference, null)['status'] === 'valid_current', 'Administrator exact lookup did not span projects.');
 verificationAssert($service->verify($captureReference, 999)['status'] === 'unknown', 'Project-scoped lookup exposed another project.');
+$history = (new LogRepository($module, $mac))->findDiagnosticEventsByEdocId(98137);
+verificationAssert(count($history) === 2, 'Administrator diagnostic lookup did not return upload and binding history.');
+verificationAssert($history[0]['message'] === 'sigwm_upload' && $history[1]['message'] === 'sigwm_bind', 'Administrator diagnostic lookup returned an unexpected history.');
+verificationAssert(!array_key_exists('payload_json', $history[0]), 'Administrator diagnostic lookup returned raw payload JSON.');
 
 $current->value = '98138';
 verificationAssert($service->verify($captureReference, 123)['status'] === 'valid_historical', 'Historical signature was not distinguished from the current value.');

@@ -122,3 +122,24 @@ The project controller transforms the backend result into an allowlisted view
 model. It may expose authorized record and actor details, verification checks,
 and non-content edoc metadata. It never forwards raw upload/binding payloads,
 envelope nonces, binding MACs, log IDs, file bytes, or exception details.
+
+## Administrator page adapter (Phase 5C)
+
+The Control Center page is available only to REDCap superusers. Its link-display
+hook and controller factory both enforce that requirement, so direct page access
+uses the same authorization boundary as menu visibility.
+
+The page is an exact global lookup only. It accepts either a capture-reference
+suffix (normalized to `S-...`) or a positive numeric edoc ID by CSRF-protected
+POST. An edoc lookup first resolves the globally unique `sigwm_upload` event,
+then invokes the service with that event's capture reference and a `null`
+project scope. It has no listing, prefix search, or browse endpoint.
+
+The administrator view may expose the upload and binding project/log IDs and a
+technical history for the resolved edoc. It allowlists the ordinary log columns
+needed for diagnosis (event type, timestamp, actor, project, record, scope and
+origin fields, and technical message). It does not expose raw `payload_json`,
+envelope nonces, binding MAC values, file bytes, or exception text. Each
+history event uses a vertical layout; its remaining allowlisted fields appear
+as pretty-printed JSON. Clearing both search controls removes only the rendered
+result from the DOM without a navigation or repeat submission.
