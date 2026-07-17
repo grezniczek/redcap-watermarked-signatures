@@ -20,6 +20,24 @@ class ReferenceGenerator
             && preg_match('/^S-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/D', $value) === 1;
     }
 
+    public static function normalizeCaptureReference($value)
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $value = strtoupper(trim($value));
+        if (preg_match('/^S\s*:\s*(.+)$/D', $value, $matches)) {
+            $value = trim($matches[1]);
+        }
+        if (self::isCaptureReference($value)) {
+            return $value;
+        }
+        if (preg_match('/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/D', $value)) {
+            return 'S-' . $value;
+        }
+        return null;
+    }
+
     public static function nonce()
     {
         return Base64Url::encode(random_bytes(18));

@@ -13,6 +13,11 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
 use DE\RUB\WatermarkedSignaturesExternalModule\Context\SavedContext;
 use DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository;
 use DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer;
+use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectAccessPolicy;
+use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectVerificationController;
+use DE\RUB\WatermarkedSignaturesExternalModule\Verification\RedcapCurrentValueReader;
+use DE\RUB\WatermarkedSignaturesExternalModule\Verification\RedcapEdocReader;
+use DE\RUB\WatermarkedSignaturesExternalModule\Verification\VerificationService;
 
 require_once "classes/ActionTagHelper.php";
 require_once "classes/InjectionHelper.php";
@@ -30,6 +35,8 @@ require_once "classes/Watermark/Renderer.php";
 require_once "classes/Verification/RedcapEdocReader.php";
 require_once "classes/Verification/RedcapCurrentValueReader.php";
 require_once "classes/Verification/VerificationService.php";
+require_once "classes/Verification/ProjectAccessPolicy.php";
+require_once "classes/Verification/ProjectVerificationController.php";
 
 class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExternalModule
 {
@@ -122,6 +129,49 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         $rights = $user->getRights($project_id);
 
         return null;
+    }
+
+    function redcap_module_link_check_display($project_id, $link)
+    {
+        if (($link["key"] ?? "") !== "signature-verification") {
+            return parent::redcap_module_link_check_display($project_id, $link);
+        }
+        if (!is_numeric($project_id) || (int) $project_id < 1) {
+            return null;
+        }
+
+        try {
+            $this->init_proj((int) $project_id);
+            $this->init_config();
+            $policy = $this->project_access_policy((int) $project_id);
+            return $policy->canAccessAnyInstrument($this->configured_signature_instruments()) ? $link : null;
+        } catch (Throwable $exception) {
+            return null;
+        }
+    }
+
+    public function get_project_verification_controller($projectId)
+    {
+        if (!is_numeric($projectId) || (int) $projectId < 1) {
+            throw new \InvalidArgumentException("Project ID must be a positive integer.");
+        }
+        $projectId = (int) $projectId;
+        $this->init_proj($projectId);
+        $this->init_config();
+        $policy = $this->project_access_policy($projectId);
+        if (!$policy->canAccessAnyInstrument($this->configured_signature_instruments())) {
+            throw new \RuntimeException("The current user may not access signature verification in this project.");
+        }
+
+        $bindingMac = new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO));
+        $repository = new LogRepository($this, $bindingMac);
+        $service = new VerificationService(
+            $repository,
+            $bindingMac,
+            new RedcapEdocReader(),
+            new RedcapCurrentValueReader()
+        );
+        return new ProjectVerificationController($projectId, $repository, $bindingMac, $service, $policy);
     }
 
     #endregion
@@ -608,6 +658,31 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             }
         }
         return $fields;
+    }
+
+    private function configured_signature_instruments()
+    {
+        $instruments = array();
+        foreach ($this->get_project_metadata() as $metadata) {
+            if ($this->is_configured_signature_field($metadata) && isset($metadata["form_name"])) {
+                $instruments[] = (string) $metadata["form_name"];
+            }
+        }
+        return array_values(array_unique($instruments));
+    }
+
+    private function project_access_policy($projectId)
+    {
+        $user = $this->getUser();
+        $module = $this;
+        return new ProjectAccessPolicy(
+            (int) $projectId,
+            $user->isSuperUser(),
+            $user->getRights((int) $projectId),
+            function ($record) use ($module) {
+                return $module->getDAG($record);
+            }
+        );
     }
 
     private function is_configured_signature_field($metadata)

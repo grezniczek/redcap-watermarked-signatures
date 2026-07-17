@@ -15,6 +15,17 @@
     "enable-no-auth-logging": true,
     "auth-ajax-actions": [
     ],
+    "links": {
+        "project": [
+            {
+                "name": "Verify watermarked signature",
+                "key": "signature-verification",
+                "icon": "fa-solid fa-shield-halved",
+                "url": "pages/verify-signature.php",
+                "show-header-and-footer": true
+            }
+        ]
+    },
     "action-tags": [
         {
             "tag": "@WATERMARKED-SIGNATURE",

@@ -985,6 +985,13 @@ The page may show:
 
 The page must respect REDCap data-access groups and other relevant access restrictions.
 
+The project page is linked through the External Module `config.json`. Link and
+page access require viewing rights to at least one enabled signature
+instrument. Exact-result access additionally requires viewing rights to the
+captured instrument and, for a bound result, membership in the record's DAG
+when the user is DAG-restricted. Unbound uploads are withheld from
+DAG-restricted project users because no authoritative record/DAG exists yet.
+
 ## 21.2 Global administrator verification
 
 Accessible only to REDCap administrators.

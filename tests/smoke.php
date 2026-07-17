@@ -84,7 +84,9 @@ assertTrue(
     'Envelope round trip failed.'
 );
 
-$tampered = substr($envelope, 0, -1) . (substr($envelope, -1) === 'A' ? 'B' : 'A');
+list($encodedPayload, $encodedMac) = explode('.', $envelope, 2);
+$encodedPayload[0] = $encodedPayload[0] === 'A' ? 'B' : 'A';
+$tampered = $encodedPayload . '.' . $encodedMac;
 $tamperRejected = false;
 try {
     $signer->verify($tampered);

@@ -16,6 +16,7 @@ namespace ExternalModules {
         public $framework;
         public $logs = array();
         public $exitRequested = false;
+        public $testUser;
 
         public function getProjectSetting($key)
         {
@@ -59,6 +60,21 @@ namespace ExternalModules {
         public function getModulePath()
         {
             return dirname(__DIR__) . '/';
+        }
+
+        public function getUser($username = null)
+        {
+            return $this->testUser;
+        }
+
+        public function getDAG($record)
+        {
+            return null;
+        }
+
+        public function redcap_module_link_check_display($projectId, $link)
+        {
+            return null;
         }
     }
 }
@@ -111,6 +127,28 @@ namespace {
         public function getUrl($file)
         {
             return '/modules/watermarked_signatures/' . $file;
+        }
+    }
+
+    class FakeUser
+    {
+        private $superUser;
+        private $rights;
+
+        public function __construct($superUser, $rights)
+        {
+            $this->superUser = $superUser;
+            $this->rights = $rights;
+        }
+
+        public function isSuperUser()
+        {
+            return $this->superUser;
+        }
+
+        public function getRights($projectId)
+        {
+            return $this->rights;
         }
     }
 
@@ -318,6 +356,21 @@ namespace {
     moduleAssert($participantEnvelope['field'] === 'participant_signature', 'Participant envelope was scoped to the wrong field.');
     moduleAssert($witnessEnvelope['field'] === 'witness_signature', 'Witness envelope was scoped to the wrong field.');
     moduleAssert($participantEnvelope['context_ref'] !== $witnessEnvelope['context_ref'], 'Signature fields shared a context reference.');
+
+    $verificationLink = array('key' => 'signature-verification', 'url' => 'pages/verify-signature.php');
+    $linkModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($linkModule, 'proj', new FakeProject());
+    setPrivateProperty($linkModule, 'project_id', 123);
+    $linkModule->testUser = new FakeUser(false, array(
+        'forms' => array('consent' => '2'),
+        'group_id' => ''
+    ));
+    moduleAssert($linkModule->redcap_module_link_check_display(123, $verificationLink) === $verificationLink, 'Read-only form user did not receive the verification link.');
+    $linkModule->testUser = new FakeUser(false, array(
+        'forms' => array('consent' => '0'),
+        'group_id' => ''
+    ));
+    moduleAssert($linkModule->redcap_module_link_check_display(123, $verificationLink) === null, 'User without signature-form access received the verification link.');
 
     $autoNumberModule = new WatermarkedSignaturesExternalModule();
     $autoNumberModule->framework = new FakeFramework();
