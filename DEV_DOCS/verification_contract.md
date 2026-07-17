@@ -143,3 +143,9 @@ envelope nonces, binding MAC values, file bytes, or exception text. Each
 history event uses a vertical layout; its remaining allowlisted fields appear
 as pretty-printed JSON. Clearing both search controls removes only the rendered
 result from the DOM without a navigation or repeat submission.
+
+The project and administrator entry pages keep their separate authorization and
+lookup setup, then pass a scope-specific view model to one shared rendering
+partial. The partial contains only presentation logic; it uses REDCap's project
+page heading style for project verification and the Control Center heading style
+for administrator verification.

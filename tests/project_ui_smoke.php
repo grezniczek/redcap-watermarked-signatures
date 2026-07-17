@@ -229,12 +229,16 @@ $projectLinks = $config['links']['project'] ?? array();
 projectUiAssert(count($projectLinks) === 1 && $projectLinks[0]['key'] === 'signature-verification', 'Project verification link is not configured.');
 projectUiAssert($projectLinks[0]['show-header-and-footer'] === true, 'Project verification page does not request the REDCap layout.');
 
-$pageSource = file_get_contents(__DIR__ . '/../pages/verify-signature.php');
+$entrySource = file_get_contents(__DIR__ . '/../pages/verify-signature.php');
+$pageSource = file_get_contents(__DIR__ . '/../pages/partials/verification-page.php');
+projectUiAssert(strpos($entrySource, "'is_administrator' => false") !== false, 'Project verification entry point does not declare project scope.');
+projectUiAssert(strpos($entrySource, "require __DIR__ . '/partials/verification-page.php'") !== false, 'Project verification entry point does not use the shared page partial.');
 projectUiAssert(strpos($pageSource, 'method="post"') !== false, 'Verification form does not use POST.');
 projectUiAssert(strpos($pageSource, 'redcap_csrf_token') !== false, 'Verification form is missing the REDCap CSRF token.');
 projectUiAssert(strpos($pageSource, 'type="search"') !== false, 'Verification input is not a search control.');
 projectUiAssert(strpos($pageSource, '<span class="input-group-text">S:</span>') !== false, 'Verification input does not show the printed S: prefix.');
 projectUiAssert(strpos($pageSource, 'placeholder="5622-9F1F-AHCA-K"') !== false, 'Verification placeholder does not match the printed reference format.');
+projectUiAssert(strpos($pageSource, '<h1 class="projhdr">') !== false, 'Project verification title does not use the project-page style.');
 projectUiAssert(strpos($pageSource, "captureReference.addEventListener('search'") !== false, 'Verification search clear handler is missing.');
 projectUiAssert(strpos($pageSource, 'id="sigwm-verification-result"') !== false, 'Verification result wrapper is missing.');
 projectUiAssert(strpos($pageSource, "result.remove()") !== false, 'Verification search clear handler does not clear the result.');

@@ -134,13 +134,17 @@ adminUiAssert($controlCenterLinks[0]['key'] === 'administrator-signature-verific
 adminUiAssert($controlCenterLinks[0]['url'] === 'pages/admin-verify-signature.php', 'Administrator verification link target is incorrect.');
 adminUiAssert($controlCenterLinks[0]['show-header-and-footer'] === true, 'Administrator verification page does not request the REDCap layout.');
 
-$pageSource = file_get_contents(__DIR__ . '/../pages/admin-verify-signature.php');
+$entrySource = file_get_contents(__DIR__ . '/../pages/admin-verify-signature.php');
+$pageSource = file_get_contents(__DIR__ . '/../pages/partials/verification-page.php');
+adminUiAssert(strpos($entrySource, "'is_administrator' => true") !== false, 'Administrator verification entry point does not declare administrator scope.');
+adminUiAssert(strpos($entrySource, "require __DIR__ . '/partials/verification-page.php'") !== false, 'Administrator verification entry point does not use the shared page partial.');
 adminUiAssert(strpos($pageSource, 'method="post"') !== false, 'Administrator verification form does not use POST.');
 adminUiAssert(strpos($pageSource, 'redcap_csrf_token') !== false, 'Administrator verification form is missing the REDCap CSRF token.');
 adminUiAssert(strpos($pageSource, 'type="search"') !== false, 'Administrator verification input is not a search control.');
 adminUiAssert(strpos($pageSource, 'name="edoc_id"') !== false, 'Administrator edoc lookup input is missing.');
-adminUiAssert(strpos($pageSource, 'verifyEdocId') !== false, 'Administrator page does not invoke edoc verification.');
-adminUiAssert(strpos($pageSource, 'id="sigwm-admin-verification-result"') !== false, 'Administrator verification result wrapper is missing.');
+adminUiAssert(strpos($entrySource, 'verifyEdocId') !== false, 'Administrator page does not invoke edoc verification.');
+adminUiAssert(strpos($pageSource, '<h4 style="margin-top:0;" class="clearfix">') !== false, 'Administrator verification title does not use the Control Center page style.');
+adminUiAssert(strpos($pageSource, 'id="sigwm-verification-result"') !== false, 'Administrator verification result wrapper is missing.');
 adminUiAssert(strpos($pageSource, "captureReference.addEventListener('search'") !== false, 'Administrator search clear handler is missing.');
 adminUiAssert(strpos($pageSource, "edocId.addEventListener('search'") !== false, 'Administrator edoc search clear handler is missing.');
 adminUiAssert(strpos($pageSource, "result.remove()") !== false, 'Administrator search clear handler does not clear the result.');
