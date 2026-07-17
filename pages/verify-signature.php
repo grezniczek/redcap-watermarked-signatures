@@ -95,7 +95,7 @@ $detailLabels = array(
                 <input
                     id="sigwm-capture-ref"
                     class="form-control"
-                    type="text"
+                    type="search"
                     name="capture_ref"
                     value="<?= $escape($captureReference) ?>"
                     maxlength="32"

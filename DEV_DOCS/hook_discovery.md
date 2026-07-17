@@ -1,0 +1,229 @@
+# Hook discovery: REDCap signature upload technical spike
+
+## Target source inspected
+
+The initial implementation was developed against the REDCap source available in
+`/home/gr/redcap/codebase`.
+
+## Page rendering
+
+`redcap_data_entry_form` and `redcap_survey_page` run after REDCap has rendered
+the file/signature dialog JavaScript. The module uses these hooks to:
+
+1. enumerate action-tagged signature fields on the current instrument;
+2. create one signed, short-lived envelope per field; and
+3. wrap REDCap's global `filePopUp()` function so the correct envelope is added
+   to the dynamically created iframe upload form.
+
+This supports multiple signature fields because the wrapper selects the
+envelope by the `fieldName` argument supplied by REDCap.
+
+## Upload interception
+
+`DataEntry/file_upload.php` includes `Config/init_project.php` before it decodes
+`myfile_base64`. During project initialization REDCap calls
+`redcap_every_page_before_render`.
+
+The module uses that hook only when the active request is the signature upload
+receiver. At this point:
+
+- REDCap has established the project, authentication/survey context, CSRF
+  handling, metadata, and event;
+- the posted base64 signature is still mutable; and
+- `Files::uploadFile()` has not run.
+
+The module verifies the envelope and replaces `$_POST['myfile_base64']` with the
+server-rendered PNG. REDCap then continues through its normal upload path.
+
+## Capturing the edoc ID
+
+The upload receiver returns the new edoc ID in its iframe `stopUpload(...)`
+JavaScript response. The module starts a request-scoped output buffer after
+watermarking and parses that trusted server-generated response. Once the edoc ID
+is present, it appends a `sigwm_upload` provenance event.
+
+The EM framework itself buffers hook output and closes the topmost buffer as
+soon as the hook returns. The module places an inert guard buffer above its
+response-capture buffer; the framework consumes the guard, leaving the capture
+buffer active for the subsequent output from `file_upload.php`.
+
+The buffer does not alter the response.
+
+## WM1 image format
+
+Watermark format version 1 is rendered entirely by the server with GD. The
+source PNG is decoded under byte, dimension, and pixel limits and normalized
+onto an opaque white true-color canvas. Output retains the source height plus a
+38-pixel footer. Sources narrower than 300 pixels are centered on a 300-pixel
+canvas so neither footer line needs to truncate its identifiers.
+
+The visible layout is deterministic for identical source bytes and watermark
+values:
+
+1. normalized signature raster;
+2. repeated compact anchor/context/capture text, with a white edge and blue
+   center so crossings remain visible over both white and dark strokes;
+3. an opaque footer containing the full stable anchor, context reference,
+   capture reference, format marker, and server-generated UTC timestamp.
+
+The renderer accepts only the WM1 Base32 identifier shapes and an ISO 8601 UTC
+timestamp ending in `Z`. The SHA-256 digest is computed over the final encoded
+PNG and stored in both upload provenance and the later MAC-protected binding.
+
+## Failure behavior
+
+For an action-tagged signature field, a missing/invalid envelope or rendering
+failure terminates the upload request through the External Module framework's
+`exitAfterHook()` mechanism. This prevents REDCap from silently storing the
+unwatermarked payload.
+
+## Save-time binding
+
+`redcap_save_record` is the selected post-save hook. REDCap calls it after the
+record has been saved and passes the authoritative record, instrument, event,
+and repeat instance.
+
+The module re-reads only the configured signature fields through
+`REDCap::getData()` and normalizes the three storage shapes:
+
+- classic/non-repeating event data;
+- repeating-event data, whose repeat-instrument key is an empty string; and
+- repeating-instrument data, whose repeat-instrument key is the form name.
+
+Only the edoc actually persisted in the field is considered. An edoc without a
+`sigwm_upload` event is treated as a pre-module signature and ignored.
+
+Binding is serialized with a MySQL/MariaDB named lock derived only from the
+globally unique edoc ID. Inside the lock, the module queries across all projects
+using this module and checks again for the first `sigwm_bind`
+event. No existing binding produces one MAC-protected append; an identical
+binding is an idempotent no-op; and a different binding produces only a
+`sigwm_error_edoc_already_bound` event.
+
+The successful binding repeats the visible anchor as an indexed log parameter
+and inside `payload_json`. This makes the identifier printed in the image
+directly inspectable on the authoritative binding entry. The anchor is included
+in the binding MAC alongside the scope values from which it is derived.
+
+REDCap may route ordinary `SELECT` statements to a read replica. The lock
+acquire/release and protected binding lookup therefore force the primary
+database connection. The EM framework still expands the log pseudo-query before
+it is executed. This prevents replica lag from allowing a duplicate binding.
+
+## Multi-field and signature lifecycle behavior
+
+Each action-tagged signature field receives a separately signed field-scoped
+envelope and context reference. The browser replaces the hidden envelope value
+whenever another field's dialog opens and removes it for ordinary uploads, so a
+reused REDCap upload form cannot submit a stale field envelope.
+
+Save-time processing is deliberately driven by persisted field values rather
+than by every upload made from the page:
+
+- delete/redraw before save leaves earlier uploaded edocs unbound;
+- abandoning the form produces upload provenance but no binding;
+- multiple persisted signature fields bind independently;
+- clearing a field does not delete or alter its historical binding; and
+- replacing a signature in a later save retains the old binding and creates an
+  independent binding for the new edoc.
+
+For repeating instruments, bindings store the form name and authoritative hook
+instance. For repeating events, the repeat instrument is explicitly `null` and
+the authoritative event instance is stored. The stable visible anchor remains
+limited to project, event, instrument, field, and watermark version because the
+repeat instance may be unknown when upload occurs.
+
+## New records and first-page surveys (Phase 4B)
+
+The initial data-entry and survey render hooks do not provide an authoritative
+record ID for every new-record flow. In the inspected REDCap source,
+`DataEntry/index.php` invokes `redcap_data_entry_form` with a null record for a
+new form, and `Surveys/index.php` can invoke `redcap_survey_page` with a null
+record on the first public-survey page. The value eventually assigned by an
+auto-numbered save must therefore not be captured early.
+
+Capture envelopes deliberately contain `record_ref: null` and no `record_id`.
+They carry the stable project, event, instrument, and field scope plus a random
+field-specific `context_ref`. This reference connects upload provenance to the
+later save without placing a tentative record identifier in the signed envelope
+or immutable image. Stable record pseudonyms are deferred beyond the first
+milestone, as permitted by the implementation plan.
+
+After REDCap creates the record, its post-save path invokes
+`redcap_save_record` with the authoritative record ID. The module reads the edoc
+that REDCap actually persisted and binds that edoc, its upload provenance, and
+the pre-save context reference to the authoritative record. The same flow is
+used for auto-numbered data-entry records and records created by first-page
+public surveys.
+
+If record creation or the survey submission is abandoned or fails, the
+post-save hook cannot create a binding. The uploaded edoc retains its
+`sigwm_upload` provenance only, which makes the unsuccessful capture auditable
+without falsely associating it with a record.
+
+## Capture origin and actor audit fields
+
+The data-entry and survey rendering hooks place a mandatory `capture_origin`
+value (`data_entry` or `survey`) in every signed envelope. Upload interception
+copies that trusted value into `sigwm_upload` and independently snapshots the
+current authenticated username as nullable `capture_username`. Public surveys
+therefore have an explicit survey origin and a null username; no survey hash is
+stored.
+
+`redcap_save_record` independently derives `save_origin` from its trusted survey
+hook arguments and snapshots `save_username`. The first binding is created only
+when capture and save origins match. A mismatch produces
+`sigwm_error_origin_mismatch`, with both origins and nullable usernames directly
+inspectable, and no `sigwm_bind`.
+
+All four audit fields are retained in the binding payload and protected by the
+binding MAC. Usernames are operator metadata, not signer identity, and differing
+capture/save usernames do not prevent binding.
+
+Origin equality applies to creation of the first binding. An already-bound
+survey signature may legitimately be encountered during a later staff save of
+the same form. Such saves remain idempotent and preserve the original binding's
+survey origin instead of creating a false mismatch error.
+
+## Verification backend (Phase 5A)
+
+Exact verification lookup uses the complete capture reference and can be
+restricted to a project or run globally for a later administrator caller. The
+lookup rejects duplicate capture-reference, upload-edoc, or binding-edoc events
+instead of silently choosing one.
+
+Edoc existence and bytes are obtained through `Files::getEdocInfo()` and
+`Files::getEdocContentsAttributes()`, preserving REDCap's configured local or
+external storage abstraction. The verifier recomputes the SHA-256 digest but
+does not return file contents. Current-field comparison reads the normalized
+classic, repeating-instrument, or repeating-event location only after the
+binding MAC, upload relationship, and anchor have been trusted.
+
+The verification service deliberately performs no user-rights or DAG decision.
+That authorization boundary belongs to the project and administrator UI slices
+that consume the documented result contract.
+
+## Project verification page (Phase 5B)
+
+`pages/verify-signature.php` is registered as an authenticated project link with
+REDCap's header and footer. Link visibility is expanded beyond REDCap's default
+design-rights rule only when the current user has viewing rights to at least one
+instrument containing an enabled signature field. The access policy obtains
+those rights from REDCap's native `data_entry` form-rights string and delegates
+its parsing and no-access decision to `UserRights`; it does not duplicate or
+reinterpret REDCap's legacy and bitmask encodings.
+
+The page posts the full capture reference with REDCap CSRF protection. Its
+controller performs a project-scoped preflight before invoking full
+verification: form-level viewing rights are checked against the captured
+instrument, the binding MAC is validated before trusting the record ID, and a
+DAG-restricted user must belong to the bound record's DAG. Unbound uploads are
+not inspectable by DAG-restricted users because they have no authoritative DAG
+context.
+
+The visible image uses `S:` as a label and prints only the grouped reference
+suffix. The page mirrors that representation with a fixed `S:` input prefix and
+normalizes the entered suffix to the internal `S-...` lookup value.
+
+Only allowlisted verification fields reach the page. Raw log payloads and
+cryptographic transport values remain backend-only.

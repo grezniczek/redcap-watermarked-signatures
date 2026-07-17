@@ -122,6 +122,32 @@ namespace {
         }
     }
 
+    class UserRights
+    {
+        public static function convertFormRightsToArray($rightsString)
+        {
+            $rights = array();
+            if (preg_match_all('/\[([^,\]]+),([^\]]+)\]/', (string) $rightsString, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $match) {
+                    $rights[$match[1]] = $match[2];
+                }
+            }
+            return $rights;
+        }
+
+        public static function hasDataViewingRights($value, $right)
+        {
+            if ($right !== 'no-access') {
+                throw new \RuntimeException('Unsupported test right.');
+            }
+            if (!is_numeric($value) || $value === '') {
+                return true;
+            }
+            $value = (int) $value;
+            return $value < 128 ? $value === 0 : $value === 128;
+        }
+    }
+
     class FakeFramework
     {
         public function getUrl($file)
@@ -362,12 +388,12 @@ namespace {
     setPrivateProperty($linkModule, 'proj', new FakeProject());
     setPrivateProperty($linkModule, 'project_id', 123);
     $linkModule->testUser = new FakeUser(false, array(
-        'forms' => array('consent' => '2'),
+        'data_entry' => '[consent,129]',
         'group_id' => ''
     ));
     moduleAssert($linkModule->redcap_module_link_check_display(123, $verificationLink) === $verificationLink, 'Read-only form user did not receive the verification link.');
     $linkModule->testUser = new FakeUser(false, array(
-        'forms' => array('consent' => '0'),
+        'data_entry' => '[consent,128]',
         'group_id' => ''
     ));
     moduleAssert($linkModule->redcap_module_link_check_display(123, $verificationLink) === null, 'User without signature-form access received the verification link.');

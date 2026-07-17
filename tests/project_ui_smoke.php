@@ -10,6 +10,32 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectAccessPolicy;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectVerificationController;
 
+class UserRights
+{
+    public static function convertFormRightsToArray($rightsString)
+    {
+        $rights = array();
+        if (preg_match_all('/\[([^,\]]+),([^\]]+)\]/', (string) $rightsString, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $rights[$match[1]] = $match[2];
+            }
+        }
+        return $rights;
+    }
+
+    public static function hasDataViewingRights($value, $right)
+    {
+        if ($right !== 'no-access') {
+            throw new RuntimeException('Unsupported test right.');
+        }
+        if (!is_numeric($value) || $value === '') {
+            return true;
+        }
+        $value = (int) $value;
+        return $value < 128 ? $value === 0 : $value === 128;
+    }
+}
+
 function projectUiAssert($condition, $message)
 {
     if (!$condition) {
@@ -100,29 +126,31 @@ function projectUiResult($captureReference)
 }
 
 $noAccess = new ProjectAccessPolicy(123, false, array(
-    'forms' => array('consent' => '0'),
+    'data_entry' => '[consent,128][other,138]',
     'group_id' => ''
 ), function ($record) { return null; });
 projectUiAssert(!$noAccess->canViewInstrument('consent'), 'No-access form right was accepted.');
+projectUiAssert(!$noAccess->canViewInstrument('missing'), 'Missing form right was accepted.');
 
 $readOnly = new ProjectAccessPolicy(123, false, array(
-    'forms' => array('consent' => '2'),
+    'data_entry' => '[consent,2][other,0]',
     'group_id' => ''
 ), function ($record) { return null; });
 projectUiAssert($readOnly->canViewInstrument('consent'), 'Legacy read-only form right was rejected.');
 projectUiAssert($readOnly->canAccessAnyInstrument(array('other', 'consent')), 'Accessible configured form did not enable the page.');
 
 $bitmaskReadOnly = new ProjectAccessPolicy(123, false, array(
-    'forms' => array('consent' => '129'),
+    'data_entry' => '[consent,129][other,138]',
     'group_id' => ''
 ), function ($record) { return null; });
 projectUiAssert($bitmaskReadOnly->canViewInstrument('consent'), 'Bitmask read-only form right was rejected.');
+projectUiAssert($bitmaskReadOnly->canViewInstrument('other'), 'Bitmask view/edit form right was rejected.');
 
-$superUser = new ProjectAccessPolicy(123, true, array('forms' => array(), 'group_id' => 99), function ($record) { return 1; });
+$superUser = new ProjectAccessPolicy(123, true, array('group_id' => 99), function ($record) { return 1; });
 projectUiAssert($superUser->canViewInstrument('consent') && !$superUser->isDagRestricted(), 'Superuser access was incorrectly restricted.');
 
 $dagPolicy = new ProjectAccessPolicy(123, false, array(
-    'forms' => array('consent' => '1'),
+    'data_entry' => '[consent,138]',
     'group_id' => 7
 ), function ($record) {
     return $record === 'R-001' ? 7 : 8;
@@ -150,7 +178,7 @@ $mac = new ProjectUiMac();
 $service = new ProjectUiService();
 $service->result = projectUiResult($captureReference);
 $allowedPolicy = new ProjectAccessPolicy(123, false, array(
-    'forms' => array('consent' => '2'),
+    'data_entry' => '[consent,129]',
     'group_id' => ''
 ), function ($record) { return null; });
 $controller = new ProjectVerificationController(123, $repository, $mac, $service, $allowedPolicy);
@@ -170,7 +198,7 @@ projectUiAssert($deniedController->verify($captureReference)['status'] === 'acce
 projectUiAssert($service->calls === $callsBeforeDenial, 'Denied form access invoked full verification.');
 
 $otherDagPolicy = new ProjectAccessPolicy(123, false, array(
-    'forms' => array('consent' => '1'),
+    'data_entry' => '[consent,138]',
     'group_id' => 8
 ), function ($record) { return 7; });
 $otherDagController = new ProjectVerificationController(123, $repository, $mac, $service, $otherDagPolicy);

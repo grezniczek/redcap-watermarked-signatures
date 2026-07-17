@@ -44,19 +44,13 @@ class ProjectAccessPolicy
         if ($this->superUser) {
             return true;
         }
-        $forms = isset($this->rights['forms']) && is_array($this->rights['forms'])
-            ? $this->rights['forms']
-            : array();
-        $value = $forms[(string) $instrument] ?? null;
-        if (!is_numeric($value) || $value === '') {
+        if (!isset($this->rights['data_entry']) || !is_string($this->rights['data_entry'])) {
             return false;
         }
 
-        $value = (int) $value;
-        if ($value < 128) {
-            return in_array($value, array(1, 2, 3), true);
-        }
-        return ($value & 1) === 1 || ($value & 2) === 2;
+        $forms = \UserRights::convertFormRightsToArray($this->rights['data_entry']);
+        $value = $forms[(string) $instrument] ?? null;
+        return !\UserRights::hasDataViewingRights($value, 'no-access');
     }
 
     public function canViewUpload($upload)
