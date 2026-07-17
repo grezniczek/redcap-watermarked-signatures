@@ -199,15 +199,6 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         }
     }
 
-    function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id)
-    {
-        $this->init_proj($project_id);
-        $user = $this->framework->getUser($user_id);
-        $rights = $user->getRights($project_id);
-
-        return null;
-    }
-
     function redcap_module_link_check_display($project_id, $link)
     {
         $linkKey = $link["key"] ?? "";
