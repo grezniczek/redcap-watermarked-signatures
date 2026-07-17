@@ -115,7 +115,7 @@ $detailLabels = array(
     </form>
 
     <?php if ($result !== null): ?>
-        <div id="sigwm-verification-result">
+        <div id="sigwm-verification-result" class="fs12">
         <?php
         $status = $result['status'] ?? 'incomplete';
         $presentation = $statusPresentation[$status] ?? $statusPresentation['incomplete'];
