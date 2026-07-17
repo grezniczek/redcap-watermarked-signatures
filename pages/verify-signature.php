@@ -74,6 +74,11 @@ $detailLabels = array(
     .sigwm-verify .sigwm-reference { max-width: 390px; }
     .sigwm-verify .sigwm-reference input,
     .sigwm-verify .sigwm-reference .input-group-text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .04em; }
+    .sigwm-verify .card-body.p-3,
+    .sigwm-verify .card-header.p-3 { padding-top: .6rem !important; padding-bottom: .6rem !important; }
+    .sigwm-verify .alert { padding-top: .6rem; padding-bottom: .6rem; }
+    .sigwm-verify .sigwm-result-table > tbody > tr > th,
+    .sigwm-verify .sigwm-result-table > tbody > tr > td { padding-top: .15rem; padding-bottom: .15rem; }
     .sigwm-verify .sigwm-result-table th { width: 260px; }
     .sigwm-verify code { color: #333; overflow-wrap: anywhere; }
 </style>
@@ -103,7 +108,7 @@ $detailLabels = array(
                 <i class="fa-solid fa-magnifying-glass me-1"></i> Verify
             </button>
         </div>
-        <p class="text-muted">
+        <p class="text-muted mb-0">
             Enter the complete value printed after <code>S:</code> in the signature watermark.<br>
             Lookup is exact and restricted to signatures you may view in this project.
         </p>
