@@ -103,8 +103,8 @@ function projectUiResult($captureReference)
         'edoc' => array('exists' => true, 'readable' => true, 'doc_name' => 'signature.png'),
         'upload' => array(
             'capture_ref' => $captureReference,
-            'context_ref' => 'C-1111-2222-3333-4',
-            'anchor' => 'AAAA-BBBB-CCCC-DDDD',
+            'context_ref' => 'C:1111-2222-3333-4',
+            'anchor' => 'A:AAAA-BBBB-CCCC-DDDD',
             'capture_origin' => 'data_entry',
             'capture_username' => 'capture-user',
             'captured_at' => '2026-07-17T13:00:00Z',
@@ -195,6 +195,9 @@ $presented = $controller->verify($captureReference);
 projectUiAssert($presented['status'] === 'valid_current' && $service->calls === 1, 'Authorized verification was not delegated to the service.');
 projectUiAssert($presented['details']['record_id'] === 'R-002', 'Authorized record details did not show the current record ID.');
 projectUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Authorized details did not show the public project reference.');
+projectUiAssert($presented['details']['capture_ref'] === $captureReference, 'Authorized details did not retain the canonical S: capture-reference format.');
+projectUiAssert($presented['details']['context_ref'] === 'C:1111-2222-3333-4', 'Authorized details did not use the C: context-reference display format.');
+projectUiAssert($presented['details']['anchor'] === 'A:AAAA-BBBB-CCCC-DDDD', 'Authorized details did not use the A: anchor display format.');
 projectUiAssert($presented['field_url'] === '/redcap/DataEntry/index.php?pid=123&id=R-002&event_id=417&page=consent&instance=1', 'Project verification did not create the data-entry field URL.');
 projectUiAssert(!isset($presented['upload']) && !isset($presented['binding']), 'Raw verification payload escaped the project presenter.');
 projectUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive technical values escaped the allowlist.');
@@ -202,6 +205,7 @@ $printedReference = substr($captureReference, 2);
 $controller->verify($printedReference);
 projectUiAssert($service->lastReference === $captureReference, 'Printed capture reference was not normalized to the internal form.');
 projectUiAssert(ReferenceGenerator::normalizeCaptureReference('s:' . strtolower($printedReference)) === $captureReference, 'S:-prefixed printed reference was not normalized.');
+projectUiAssert(ReferenceGenerator::normalizeCaptureReference('S-' . $printedReference) === null, 'Retired S- capture-reference input was accepted.');
 
 $deniedController = new ProjectVerificationController(123, $repository, $mac, $service, $noAccess);
 $callsBeforeDenial = $service->calls;

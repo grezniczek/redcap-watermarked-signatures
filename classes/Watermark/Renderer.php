@@ -71,6 +71,14 @@ class Renderer
         imagefilledrectangle($canvas, 0, 0, $outputWidth, $outputHeight, $white);
         imagealphablending($canvas, true);
         $signatureX = (int) floor(($outputWidth - $width) / 2);
+
+        self::drawRedcapLogoPattern($canvas, $outputWidth, $height);
+
+        // Signature widgets submit either a transparent drawing or black ink
+        // on an opaque white PNG. Treat only the white backing as transparent
+        // so the logo remains the bottom layer and the signature ink is drawn
+        // above it in both cases.
+        imagecolortransparent($source, imagecolorallocate($source, 255, 255, 255));
         imagecopy($canvas, $source, $signatureX, 0, 0, 0, $width, $height);
 
         // Use a light edge under a blue center. A single dark translucent color
@@ -85,7 +93,7 @@ class Renderer
         // preserves the familiar S:/A:/C: notation while keeping the repeated
         // overlay compact enough for REDCap's normalized 460px signature box.
         $overlay = 'S:' . self::compact(self::withoutPrefix($captureReference)) . ' ' .
-            'A:' . self::compact($anchor) . ' ' .
+            'A:' . self::compact(self::withoutPrefix($anchor)) . ' ' .
             'C:' . self::compact(self::withoutPrefix($contextReference));
         $font = self::FONT;
         $textWidth = imagefontwidth($font) * strlen($overlay);
@@ -107,7 +115,7 @@ class Renderer
 
         // Keep the user-entered capture reference at the start of the footer:
         // it is the identifier most often read directly from the image.
-        $line1 = 'WM' . self::VERSION . ' S:' . self::withoutPrefix($captureReference) . ' A:' . $anchor . ' C:' . self::withoutPrefix($contextReference);
+        $line1 = 'WM' . self::VERSION . ' S:' . self::withoutPrefix($captureReference) . ' A:' . self::withoutPrefix($anchor) . ' C:' . self::withoutPrefix($contextReference);
         $line2 = 'TS:' . $capturedAt . ($projectReference === null ? '' : ' REF:' . $projectReference);
         imagestring($canvas, $font, 5, $height + 4, self::fitText($line1, $outputWidth, $font), $text);
         imagestring($canvas, $font, 5, $height + 20, self::fitText($line2, $outputWidth, $font), $text);
@@ -129,13 +137,13 @@ class Renderer
     private static function validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt, $projectReference)
     {
         $alphabet = '[0-9A-HJKMNP-TV-Z]';
-        if (!is_string($anchor) || !preg_match('/^' . $alphabet . '{4}(?:-' . $alphabet . '{4}){3}$/D', $anchor)) {
+        if (!is_string($anchor) || !preg_match('/^A:' . $alphabet . '{4}(?:-' . $alphabet . '{4}){3}$/D', $anchor)) {
             throw new \InvalidArgumentException('The watermark anchor format is invalid.');
         }
-        if (!is_string($contextReference) || !preg_match('/^C-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '$/D', $contextReference)) {
+        if (!is_string($contextReference) || !preg_match('/^C:' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '$/D', $contextReference)) {
             throw new \InvalidArgumentException('The watermark context reference format is invalid.');
         }
-        if (!is_string($captureReference) || !preg_match('/^S-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '$/D', $captureReference)) {
+        if (!is_string($captureReference) || !preg_match('/^S:' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '{4}-' . $alphabet . '$/D', $captureReference)) {
             throw new \InvalidArgumentException('The watermark capture reference format is invalid.');
         }
         if (!is_string($capturedAt) || !preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/D', $capturedAt)) {
@@ -156,7 +164,76 @@ class Renderer
 
     private static function withoutPrefix($value)
     {
-        return preg_replace('/^[A-Z]-/', '', $value);
+        return preg_replace('/^[A-Z]:/', '', $value);
+    }
+
+    /**
+     * REDCap's color logo treatment is intentionally faint and angled, while
+     * the signature remains visually dominant.
+     */
+    private static function drawRedcapLogoPattern($canvas, $width, $height)
+    {
+        if (!function_exists('imagerotate') || !defined('APP_PATH_DOCROOT')) {
+            return;
+        }
+
+        $path = rtrim((string) APP_PATH_DOCROOT, '/\\') . '/Resources/images/redcap-logo.png';
+        $source = is_file($path) ? @imagecreatefrompng($path) : false;
+        if ($source === false) {
+            return;
+        }
+
+        $sourceWidth = imagesx($source);
+        $sourceHeight = imagesy($source);
+        $logoWidth = min(86, $sourceWidth);
+        $logoHeight = max(1, (int) round($sourceHeight * ($logoWidth / $sourceWidth)));
+        $logo = imagecreatetruecolor($logoWidth, $logoHeight);
+        if ($logo === false) {
+            imagedestroy($source);
+            return;
+        }
+        imagealphablending($logo, false);
+        imagesavealpha($logo, true);
+        $transparent = imagecolorallocatealpha($logo, 255, 255, 255, 127);
+        imagefilledrectangle($logo, 0, 0, $logoWidth - 1, $logoHeight - 1, $transparent);
+        imagecopyresampled($logo, $source, 0, 0, 0, 0, $logoWidth, $logoHeight, $sourceWidth, $sourceHeight);
+        imagedestroy($source);
+        for ($y = 0; $y < $logoHeight; $y++) {
+            for ($x = 0; $x < $logoWidth; $x++) {
+                $pixel = imagecolorat($logo, $x, $y);
+                $red = ($pixel >> 16) & 0xff;
+                $green = ($pixel >> 8) & 0xff;
+                $blue = $pixel & 0xff;
+                $color = imagecolorallocatealpha(
+                    $logo,
+                    (int) round($red + ((255 - $red) * 0.72)),
+                    (int) round($green + ((255 - $green) * 0.72)),
+                    (int) round($blue + ((255 - $blue) * 0.72)),
+                    ($pixel >> 24) & 0x7f
+                );
+                imagesetpixel($logo, $x, $y, $color);
+            }
+        }
+
+        $rotated = imagerotate($logo, 20, $transparent);
+        imagedestroy($logo);
+        if ($rotated === false) {
+            return;
+        }
+        imagealphablending($rotated, true);
+        imagesavealpha($rotated, true);
+
+        $rotatedWidth = imagesx($rotated);
+        $rotatedHeight = imagesy($rotated);
+        $stepX = 132;
+        $stepY = 47;
+        for ($row = 0, $y = -$rotatedHeight; $y < $height; $row++, $y += $stepY) {
+            $offset = ($row % 2) * (int) floor($stepX / 2);
+            for ($x = -$offset - $rotatedWidth; $x < $width; $x += $stepX) {
+                imagecopy($canvas, $rotated, $x, $y, 0, 0, $rotatedWidth, $rotatedHeight);
+            }
+        }
+        imagedestroy($rotated);
     }
 
     private static function fitText($value, $width, $font)

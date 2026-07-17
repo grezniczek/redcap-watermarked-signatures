@@ -159,9 +159,9 @@ bindingAssert($repeatForm->bindingValues('sig_a')['repeat_instrument'] === 'cons
 
 $binding = array(
     'v' => 1,
-    'anchor' => 'AAAA-BBBB-CCCC-DDDD',
-    'capture_ref' => 'S-1111-2222-3333-4',
-    'context_ref' => 'C-1111-2222-3333-4',
+    'anchor' => 'A:AAAA-BBBB-CCCC-DDDD',
+    'capture_ref' => 'S:1111-2222-3333-4',
+    'context_ref' => 'C:1111-2222-3333-4',
     'record_ref' => null,
     'project_reference' => null,
     'capture_origin' => 'data_entry',
@@ -190,7 +190,7 @@ $tamperedBinding = $bindingWithMac;
 $tamperedBinding['record_id'] = 'R-002';
 bindingAssert(!$mac->verify($tamperedBinding), 'Binding MAC did not detect a changed record.');
 $tamperedAnchorBinding = $bindingWithMac;
-$tamperedAnchorBinding['anchor'] = 'EEEE-FFFF-GGGG-HHHH';
+$tamperedAnchorBinding['anchor'] = 'A:EEEE-FFFF-GGGG-HHHH';
 bindingAssert(!$mac->verify($tamperedAnchorBinding), 'Binding MAC did not detect a changed anchor.');
 $tamperedOriginBinding = $bindingWithMac;
 $tamperedOriginBinding['capture_origin'] = 'survey';

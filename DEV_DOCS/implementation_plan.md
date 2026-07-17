@@ -194,7 +194,7 @@ Only the resulting compact digest is printed in the image.
 Example:
 
 ```text
-7K4M-P8Q2-X5DN
+A:7K4M-P8Q2-X5DN-R7CW
 ```
 
 The anchor allows the module to recompute the digest from the visible presentation context and verify that the signature was originally prepared for the same project, event, form, and field.
@@ -220,7 +220,7 @@ The context reference must include the field semantically. Two signature fields 
 Example:
 
 ```text
-C-8D3Q-K7H2-R5NW
+C:8D3Q-K7H2-R5NW-V
 ```
 
 The context reference may be created before all context components are known. It is later bound to the complete saved context.
@@ -236,8 +236,11 @@ Every redraw or typed-signature recreation receives a new capture reference.
 Example:
 
 ```text
-S-5N6T-P4WC-X8Q2
+S:5N6T-P4WC-X8Q2-Z
 ```
+
+The canonical form is the same everywhere: `A:`, `C:`, and `S:` precede the
+grouped value in the image, signed envelope, log payload, and verification UI.
 
 The capture reference should be generated server-side at the upload receiver, not accepted as authoritative client input.
 
@@ -310,7 +313,7 @@ base64url(canonical_json) + "." + base64url(hmac)
   "instrument": "consent",
   "field": "participant_signature",
   "capture_origin": "data_entry",
-  "context_ref": "C-8D3Q-K7H2-R5NW",
+  "context_ref": "C:8D3Q-K7H2-R5NW-V",
   "record_ref": "R-7M4K-2C9P",
   "issued_at": 1784212200,
   "expires_at": 1784219400,
@@ -485,7 +488,7 @@ Requirements:
 Possible repeated text:
 
 ```text
-7K4M-P8Q2 · C8D3Q-K7H2 · S5N6T-P4WC
+S:5N6TP4WCX8Q2Z · A:7K4MP8Q2X5DNR7CW · C:8D3QK7H2R5NWV
 ```
 
 The overlay may use shortened forms of the full context and capture references if the full versions are also printed in the footer.
@@ -497,7 +500,7 @@ A compact band should provide the full visible identifiers and timestamp.
 Example:
 
 ```text
-WM1 S:5N6T-P4WC-X8Q2 A:7K4M-P8Q2-X5DN C:8D3Q-K7H2-R5NW
+WM1 S:5N6T-P4WC-X8Q2-Z A:7K4M-P8Q2-X5DN-R7CW C:8D3Q-K7H2-R5NW-V
 TS:2026-07-16T14:32:05Z REF:PUBLIC-STUDY-ACRONYM
 ```
 
@@ -622,12 +625,12 @@ Example payload:
 ```json
 {
   "v": 1,
-  "capture_ref": "S-5N6T-P4WC-X8Q2",
-  "context_ref": "C-8D3Q-K7H2-R5NW",
+  "capture_ref": "S:5N6T-P4WC-X8Q2-Z",
+  "context_ref": "C:8D3Q-K7H2-R5NW-V",
   "record_ref": "R-7M4K-2C9P",
   "capture_origin": "data_entry",
   "capture_username": "alice",
-  "anchor": "7K4M-P8Q2-X5DN-R7CW",
+  "anchor": "A:7K4M-P8Q2-X5DN-R7CW",
   "pid": 123,
   "event_id": 417,
   "instrument": "consent",
@@ -749,9 +752,9 @@ Example payload:
 ```json
 {
   "v": 1,
-  "anchor": "7K4M-P8Q2-X5DN-R7CW",
-  "capture_ref": "S-5N6T-P4WC-X8Q2",
-  "context_ref": "C-8D3Q-K7H2-R5NW",
+  "anchor": "A:7K4M-P8Q2-X5DN-R7CW",
+  "capture_ref": "S:5N6T-P4WC-X8Q2-Z",
+  "context_ref": "C:8D3Q-K7H2-R5NW-V",
   "record_ref": "R-7M4K-2C9P",
   "capture_origin": "data_entry",
   "capture_username": "alice",

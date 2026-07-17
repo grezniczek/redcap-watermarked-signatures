@@ -329,7 +329,7 @@ verificationAssert($service->verify($captureReference, 123)['status'] === 'valid
 $unknownReference = ReferenceGenerator::captureReference();
 verificationAssert($service->verify($unknownReference, 123)['status'] === 'unknown', 'Unknown capture reference was not reported.');
 $queriesBeforeInvalidReference = $module->queryCount;
-verificationAssert($service->verify('S-not-valid', 123)['status'] === 'invalid_reference', 'Malformed capture reference was not rejected.');
+verificationAssert($service->verify('S:not-valid', 123)['status'] === 'invalid_reference', 'Malformed capture reference was not rejected.');
 verificationAssert($module->queryCount === $queriesBeforeInvalidReference, 'Malformed reference triggered a log lookup.');
 
 $unboundReference = ReferenceGenerator::captureReference();
@@ -346,7 +346,7 @@ $invalidMac = $invalidMacService->verify($captureReference, 123);
 verificationAssert($invalidMac['status'] === 'invalid' && in_array('binding_mac_mismatch', $invalidMac['issues'], true), 'Invalid binding MAC was not detected.');
 
 $anchorUpload = $upload;
-$anchorUpload['anchor'] = 'AAAA-BBBB-CCCC-DDDD';
+$anchorUpload['anchor'] = 'A:AAAA-BBBB-CCCC-DDDD';
 $anchorBinding = verificationBinding($anchorUpload, $mac);
 list($anchorService) = verificationHarness($anchorUpload, $anchorBinding, $bytes);
 $anchorResult = $anchorService->verify($captureReference, 123);

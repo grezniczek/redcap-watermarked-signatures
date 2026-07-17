@@ -17,7 +17,7 @@ class ReferenceGenerator
     public static function isCaptureReference($value)
     {
         return is_string($value)
-            && preg_match('/^S-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/D', $value) === 1;
+            && preg_match('/^S:[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/D', $value) === 1;
     }
 
     public static function normalizeCaptureReference($value)
@@ -26,14 +26,11 @@ class ReferenceGenerator
             return null;
         }
         $value = strtoupper(trim($value));
-        if (preg_match('/^S\s*:\s*(.+)$/D', $value, $matches)) {
-            $value = trim($matches[1]);
-        }
         if (self::isCaptureReference($value)) {
             return $value;
         }
         if (preg_match('/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/D', $value)) {
-            return 'S-' . $value;
+            return 'S:' . $value;
         }
         return null;
     }
@@ -46,6 +43,6 @@ class ReferenceGenerator
     private static function generate($prefix, $characters)
     {
         $encoded = substr(Base32::encode(random_bytes(12)), 0, $characters);
-        return $prefix . '-' . Base32::group($encoded);
+        return $prefix . ':' . Base32::group($encoded);
     }
 }

@@ -260,7 +260,7 @@ context.
 
 The visible image uses `S:` as a label and prints only the grouped reference
 suffix. The page mirrors that representation with a fixed `S:` input prefix and
-normalizes the entered suffix to the internal `S-...` lookup value.
+normalizes the entered suffix to the canonical `S:...` lookup value.
 
 Only allowlisted verification fields reach the page. Raw log payloads and
 cryptographic transport values remain backend-only.

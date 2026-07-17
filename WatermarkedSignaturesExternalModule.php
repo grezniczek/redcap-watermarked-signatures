@@ -763,7 +763,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         if (!$this->is_valid_origin($payload["capture_origin"])) {
             throw new \UnexpectedValueException("Invalid envelope capture origin.");
         }
-        if (!is_string($payload["context_ref"]) || !preg_match('/^C-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/', $payload["context_ref"])) {
+        if (!is_string($payload["context_ref"]) || !preg_match('/^C:[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/', $payload["context_ref"])) {
             throw new \UnexpectedValueException("Invalid envelope context reference.");
         }
         if ($payload["record_ref"] !== null

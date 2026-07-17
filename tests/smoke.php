@@ -104,7 +104,7 @@ $scope = array(
     'field' => 'participant_signature'
 );
 $anchor = Anchor::create($scope, str_repeat('a', 32));
-assertTrue((bool) preg_match('/^[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}$/', $anchor), 'Anchor format failed.');
+assertTrue((bool) preg_match('/^A:[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}$/', $anchor), 'Anchor format failed.');
 
 if (extension_loaded('gd')) {
     $png = signaturePng(460, 120);
@@ -222,7 +222,7 @@ if (extension_loaded('gd')) {
     }
 
     $longestFooter = max(
-        strlen('WM1 S:' . preg_replace('/^S-/', '', $captureReference) . ' A:' . $anchor . ' C:' . preg_replace('/^C-/', '', $payload['context_ref'])),
+        strlen('WM1 S:' . preg_replace('/^S:/', '', $captureReference) . ' A:' . preg_replace('/^A:/', '', $anchor) . ' C:' . preg_replace('/^C:/', '', $payload['context_ref'])),
         strlen('TS:2026-07-16T14:32:05.381Z REF:' . str_repeat('X', Renderer::MAX_PROJECT_REFERENCE_LENGTH))
     );
     assertTrue(
@@ -267,6 +267,16 @@ if (extension_loaded('gd')) {
             '2026-07-16T14:32:05Z'
         );
     }, 'Renderer accepted an invalid anchor format.');
+
+    assertThrows(function () use ($renderer, $png, $payload, $captureReference) {
+        $renderer->renderBase64(
+            base64_encode($png),
+            'A-AAAA-BBBB-CCCC-DDDD',
+            $payload['context_ref'],
+            $captureReference,
+            '2026-07-16T14:32:05Z'
+        );
+    }, 'Renderer accepted the retired A- anchor format.');
 
     assertThrows(function () use ($renderer, $png, $anchor, $payload, $captureReference) {
         $renderer->renderBase64(

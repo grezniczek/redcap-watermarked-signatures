@@ -13,8 +13,8 @@ data-access-group rules before invoking verification or exposing its result.
 
 The service accepts:
 
-- the complete capture reference printed in the watermark, in canonical WM1
-  form (`S-XXXX-XXXX-XXXX-X`); and
+- the complete capture reference printed in the watermark, in canonical
+  `S:XXXX-XXXX-XXXX-X` form; and
 - either a positive project ID for project-scoped lookup or `null` for a global
   administrator lookup.
 
@@ -102,11 +102,10 @@ of the page URL and ordinary browser history. The module link is available to a
 superuser or a project user who has at least read-only viewing access to one
 instrument containing an enabled signature field.
 
-The image prints the reference as `S:XXXX-XXXX-XXXX-X`, while the log's
-canonical internal form is `S-XXXX-XXXX-XXXX-X`. The page displays `S:` as a
-fixed input-group prefix so the user enters exactly the suffix visible on the
-image. The controller normalizes that suffix to the canonical form; pasted
-`S:...` and `S-...` values are accepted as conveniences as well.
+The image, signed envelope, log payloads, and details pages use the same
+canonical identifiers: `S:`, `C:`, and `A:`. The page displays `S:` as a fixed
+input-group prefix so the user enters exactly the suffix visible on the image;
+the controller restores the canonical `S:` prefix before exact lookup.
 
 Authorization is performed before full verification reads an edoc or current
 record value:
@@ -136,7 +135,7 @@ hook and controller factory both enforce that requirement, so direct page access
 uses the same authorization boundary as menu visibility.
 
 The page is an exact global lookup only. It accepts either a capture-reference
-suffix (normalized to `S-...`) or a positive numeric edoc ID by CSRF-protected
+suffix (normalized to `S:...`) or a positive numeric edoc ID by CSRF-protected
 POST. An edoc lookup first resolves the globally unique `sigwm_upload` event,
 then invokes the service with that event's capture reference and a `null`
 project scope. It has no listing, prefix search, or browse endpoint.

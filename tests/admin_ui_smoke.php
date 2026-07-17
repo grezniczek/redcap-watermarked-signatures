@@ -107,8 +107,8 @@ $service->result = array(
         '_project_id' => 461,
         '_log_id' => 87,
         'capture_ref' => $captureReference,
-        'context_ref' => 'C-1111-2222-3333-4',
-        'anchor' => 'AAAA-BBBB-CCCC-DDDD',
+        'context_ref' => 'C:1111-2222-3333-4',
+        'anchor' => 'A:AAAA-BBBB-CCCC-DDDD',
         'capture_origin' => 'data_entry',
         'capture_username' => 'capture-user',
         'captured_at' => '2026-07-17T13:00:00Z',
@@ -147,6 +147,9 @@ adminUiAssert($presented['details']['upload_project_id'] === 461, 'Upload projec
 adminUiAssert($presented['details']['binding_log_id'] === 88, 'Binding log ID was not presented.');
 adminUiAssert($presented['details']['record_id'] === '12', 'Administrator details did not present the current record ID.');
 adminUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Administrator details did not present the public project reference.');
+adminUiAssert($presented['details']['capture_ref'] === $captureReference, 'Administrator details did not retain the canonical S: capture-reference format.');
+adminUiAssert($presented['details']['context_ref'] === 'C:1111-2222-3333-4', 'Administrator details did not use the C: context-reference display format.');
+adminUiAssert($presented['details']['anchor'] === 'A:AAAA-BBBB-CCCC-DDDD', 'Administrator details did not use the A: anchor display format.');
 adminUiAssert($presented['field_url'] === '/redcap/DataEntry/index.php?pid=461&id=12&event_id=1423&page=form_1&instance=1', 'Administrator verification did not create the data-entry field URL.');
 adminUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive verification values escaped administrator details.');
 adminUiAssert($repository->requestedRenameProjectId === 461 && $repository->requestedRenameRecordId === '12', 'Administrator history did not use the current binding record.');
