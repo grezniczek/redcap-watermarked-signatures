@@ -8,10 +8,18 @@
 
 ## 0. Tooling hints
 
-node is available here:
+The JavaScript smoke test is intentionally dependency-free and is compatible
+with the Node.js versions used by the development machines. Run it with the
+`node` executable available on the current machine:
+
 ```bash
-/home/gr/.nvm/versions/node/v22.22.3/bin/node 
+node tests/js_smoke.js
 ```
+
+Some development machines provide Node.js 22 through an NVM-managed path;
+others may provide a system Node.js version. Do not hard-code a machine-local
+path in automation or documentation. The test currently also passes with Node
+18.
 
 ---
 
@@ -1447,24 +1455,60 @@ A first usable release should satisfy all of the following:
 
 ---
 
-## 31. Open implementation decisions
+## 31. Decisions resolved in the current implementation
 
-The architecture is sufficiently defined to begin coding, but the first implementation still needs to resolve:
+The first implementation has resolved the original architecture decisions as
+follows:
 
-1. Exact REDCap hook points for upload interception and post-save binding.
-2. How the correct field envelope is attached to each iframe upload.
-3. Whether capture references are generated immediately before rendering or after a transport-specific request identifier is known.
-4. The exact mechanism for obtaining the edoc ID after normal upload processing.
-5. How to make upload provenance creation robust if REDCap’s upload handler terminates or redirects.
-6. Advisory-lock support and naming in the target database abstraction.
-7. Whether record pseudonyms are included in the first milestone or added after the binding spike.
-8. Exact watermark dimensions, opacity, typography, and identifier length.
-9. Retention duration for unbound uploads.
-10. Whether a save-time binding failure should merely log/display an error or block completion in selected strict configurations.
-11. Which REDCap versions will be officially supported.
-12. Whether the project verification page should be available to all users with record access or require a specific module permission.
+1. **REDCap hooks:** page envelopes are injected through
+   `redcap_data_entry_form` and `redcap_survey_page`; upload interception uses
+   `redcap_every_page_before_render` for the signature upload receiver; and
+   authoritative binding uses `redcap_save_record`.
+2. **Field-specific iframe envelope:** the page script wraps REDCap's global
+   `filePopUp()` function and adds or replaces the hidden envelope input for
+   the field being uploaded. It removes that input for ordinary uploads so an
+   iframe form cannot retain a stale envelope.
+3. **Capture-reference timing:** a fresh capture reference is generated at
+   upload time, immediately before server-side rendering. The envelope carries
+   the separately generated, field-specific context reference.
+4. **edoc ID capture:** a guarded, request-scoped output buffer observes
+   REDCap's trusted `stopUpload(...)` response after normal upload processing
+   and records provenance only after the resulting edoc ID is available.
+5. **Upload-provenance robustness:** failure to verify an envelope or render a
+   watermark is fail-closed through the External Module hook exit mechanism.
+   An upload that succeeds but is never persisted in a field remains auditable
+   as unbound provenance and is eligible for retention cleanup.
+6. **One-time binding concurrency:** a MySQL/MariaDB named lock scoped to the
+   globally unique edoc ID protects binding creation. The lock operations and
+   binding lookup use the primary database connection to avoid read-replica
+   lag; equal retries are idempotent and conflicting bindings become error
+   events.
+7. **Record pseudonyms:** intentionally deferred. The visible image contains
+   no record ID, while the capture reference, context reference, and authorized
+   verification flow provide the required lookup and audit capability.
+8. **Watermark format:** WM1 is a deterministic server-side GD rendering with
+   a repeated overlay and a 38-pixel footer. It prints the stable anchor,
+   context reference, capture reference, UTC timestamp, and optional public
+   project reference, subject to strict input and image-size limits.
+9. **Unbound-upload retention:** the daily cron purges unbound upload
+   provenance after 90 days by default. A project setting accepts `0` to
+   disable automatic purging.
+10. **Binding failure policy:** upload-time failures block storage of a clean
+    signature. Save-time binding failures are recorded as structured events;
+    they do not block REDCap's completed save in the current release.
+11. **Supported REDCap version:** the module currently requires REDCap 17.3.0
+    or later. Compatibility testing on the exact deployed REDCap maintenance
+    releases remains a release-validation activity.
+12. **Project verification access:** the project link and controller allow
+    superusers or users with viewing access to an enabled signature instrument.
+    Verification additionally enforces form rights and, where applicable, data
+    access group membership. The administrator page is restricted to
+    superusers.
 
-These decisions should be documented in code comments and the module README as they are resolved.
+The hook details and authorization/verification boundaries are maintained in
+`hook_discovery.md` and `verification_contract.md`. Future decisions should be
+added here only when they represent an unresolved product choice, rather than
+an already implemented design detail.
 
 ---
 
