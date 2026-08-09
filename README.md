@@ -14,12 +14,14 @@ This module is an audit and verification aid. It does not identify the person
 who drew the signature, replace REDCap user authentication, or by itself meet
 any legal or institutional requirement for electronic signatures or consent.
 
+## Example
+
+![Example of a watermarked signature](images/example_signature.png)
+
 ## Role-specific help
 
-- **Project users:** [Capture and verify watermarked signatures](docs/project-user-guide.md)
-- **REDCap administrators:** [Configure, verify, and troubleshoot](docs/administrator-guide.md)
-
-Each guide is linked directly from its corresponding verification page.
+Role-specific help is provided on the respective project and Control Center
+verification pages.
 
 ## Before you begin
 
