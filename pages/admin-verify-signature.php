@@ -76,7 +76,10 @@ $verificationPage = array(
         'save_username' => $module->framework->tt('ui_label_save_username'), // Save username
         'bound_at' => $module->framework->tt('ui_label_bound_at'), // Bound at (UTC)
         'watermark_version' => $module->framework->tt('ui_label_watermark_version'), // Watermark version
-        'file_sha256' => $module->framework->tt('ui_label_stored_sha256') // Stored SHA-256
+        'file_sha256' => $module->framework->tt('ui_label_stored_sha256'), // Stored SHA-256
+        'background_image_mode' => $module->framework->tt('ui_label_background_image_mode'), // Selected background image
+        'background_image_effective_mode' => $module->framework->tt('ui_label_background_image_effective_mode'), // Applied background image
+        'background_image_sha256' => $module->framework->tt('ui_label_background_image_sha256') // Custom background image SHA-256
     )
 );
 

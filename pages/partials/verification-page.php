@@ -31,6 +31,11 @@ $logEventLabel = $module->framework->tt('ui_label_log_event'); // Log event
 $unknownEventLabel = $module->framework->tt('ui_unknown_event'); // unknown event
 $detailsLabel = $module->framework->tt('ui_label_details'); // Details
 $technicalFindingsLabel = $module->framework->tt('ui_technical_findings'); // Technical findings:
+$backgroundImageModeLabels = array(
+    'redcap' => $module->framework->tt('ui_background_image_mode_redcap'), // REDCap logo
+    'custom' => $module->framework->tt('ui_background_image_mode_custom'), // Custom image
+    'none' => $module->framework->tt('ui_background_image_mode_none') // No background image
+);
 
 $statusPresentation = array(
     'valid_current' => array(
@@ -248,9 +253,16 @@ $diagnosticSummaryLabels = array(
                         <?php foreach ($detailLabels as $key => $label): ?>
                             <?php if (!array_key_exists($key, $result['details'])) continue; ?>
                             <?php $value = $result['details'][$key]; ?>
+                            <?php
+                            $displayValue = in_array($key, array('background_image_mode', 'background_image_effective_mode'), true)
+                                && is_string($value)
+                                && array_key_exists($value, $backgroundImageModeLabels)
+                                ? $backgroundImageModeLabels[$value]
+                                : $value;
+                            ?>
                             <tr>
                                 <th class="ps-3"><?= $escape($label) ?></th>
-                                <td><code><?= $value === null || $value === '' ? '&mdash;' : $escape($value) ?></code></td>
+                                <td><code><?= $displayValue === null || $displayValue === '' ? '&mdash;' : $escape($displayValue) ?></code></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>

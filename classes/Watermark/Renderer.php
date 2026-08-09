@@ -11,17 +11,22 @@ class Renderer
     const MAX_DECODED_BYTES = 6291456;
     const MAX_DIMENSION = 4096;
     const MAX_PIXELS = 12000000;
+    const MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION = 16;
+    const MAX_CUSTOM_BACKGROUND_IMAGE_DIMENSION = 512;
+    const MAX_CUSTOM_BACKGROUND_IMAGE_BYTES = 1048576;
+    const MAX_BACKGROUND_IMAGE_DISPLAY_DIMENSION = 86;
     const MIN_OUTPUT_WIDTH = 460;
     const FOOTER_HEIGHT = 38;
     const MAX_PROJECT_REFERENCE_LENGTH = 30;
     const FONT = 2;
 
-    public function renderBase64($encodedPng, $anchor, $contextReference, $captureReference, $capturedAt, $projectReference = null)
+    public function renderBase64($encodedPng, $anchor, $contextReference, $captureReference, $capturedAt, $projectReference = null, $backgroundImage = null)
     {
         if (!extension_loaded('gd')) {
             throw new \RuntimeException('The GD PHP extension is required to watermark signatures.');
         }
         self::validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt, $projectReference);
+        $backgroundImage = self::normalizeBackgroundImage($backgroundImage);
         if (!is_string($encodedPng) || $encodedPng === '') {
             throw new \InvalidArgumentException('The submitted signature image is empty.');
         }
@@ -72,7 +77,7 @@ class Renderer
         imagealphablending($canvas, true);
         $signatureX = (int) floor(($outputWidth - $width) / 2);
 
-        self::drawRedcapLogoPattern($canvas, $outputWidth, $height);
+        self::drawBackgroundImagePattern($canvas, $outputWidth, $height, $backgroundImage);
 
         // Signature widgets submit either a transparent drawing or black ink
         // on an opaque white PNG. Treat only the white backing as transparent
@@ -134,6 +139,43 @@ class Renderer
         return $output;
     }
 
+    /**
+     * Validate the retained project setting before its contents reach GD.
+     * The rendered signature canvas is small, so accepting larger source
+     * images would only consume memory before the image is scaled down.
+     */
+    public static function validateCustomBackgroundImage($contents)
+    {
+        if (!is_string($contents) || $contents === '') {
+            throw new \InvalidArgumentException('The custom background image is empty.');
+        }
+        if (strlen($contents) > self::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES) {
+            throw new \InvalidArgumentException('The custom background image is too large.');
+        }
+
+        $imageInfo = @getimagesizefromstring($contents);
+        if ($imageInfo === false || $imageInfo[2] !== IMAGETYPE_PNG) {
+            throw new \InvalidArgumentException('The custom background image must be a valid PNG image.');
+        }
+
+        $width = (int) $imageInfo[0];
+        $height = (int) $imageInfo[1];
+        if ($width < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
+            || $height < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
+            || $width > self::MAX_CUSTOM_BACKGROUND_IMAGE_DIMENSION
+            || $height > self::MAX_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
+            throw new \InvalidArgumentException('The custom background image dimensions are not allowed.');
+        }
+
+        $image = @imagecreatefromstring($contents);
+        if ($image === false) {
+            throw new \InvalidArgumentException('The custom background image PNG could not be decoded.');
+        }
+        imagedestroy($image);
+
+        return array('width' => $width, 'height' => $height);
+    }
+
     private static function validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt, $projectReference)
     {
         $alphabet = '[0-9A-HJKMNP-TV-Z]';
@@ -157,6 +199,28 @@ class Renderer
         }
     }
 
+    private static function normalizeBackgroundImage($backgroundImage)
+    {
+        if ($backgroundImage === null) {
+            return array('mode' => 'redcap', 'contents' => null);
+        }
+        if (!is_array($backgroundImage) || !isset($backgroundImage['mode'])) {
+            throw new \InvalidArgumentException('The watermark background image profile is invalid.');
+        }
+
+        $mode = $backgroundImage['mode'];
+        if (!in_array($mode, array('redcap', 'custom', 'none'), true)) {
+            throw new \InvalidArgumentException('The watermark background image mode is invalid.');
+        }
+        if ($mode !== 'custom') {
+            return array('mode' => $mode, 'contents' => null);
+        }
+
+        $contents = $backgroundImage['contents'] ?? null;
+        self::validateCustomBackgroundImage($contents);
+        return array('mode' => 'custom', 'contents' => $contents);
+    }
+
     private static function compact($value)
     {
         return str_replace('-', '', $value);
@@ -167,26 +231,33 @@ class Renderer
         return preg_replace('/^[A-Z]:/', '', $value);
     }
 
-    /**
-     * REDCap's color logo treatment is intentionally faint and angled, while
-     * the signature remains visually dominant.
-     */
-    private static function drawRedcapLogoPattern($canvas, $width, $height)
+    private static function drawBackgroundImagePattern($canvas, $width, $height, $backgroundImage)
     {
-        if (!function_exists('imagerotate') || !defined('APP_PATH_DOCROOT')) {
+        if ($backgroundImage['mode'] === 'none' || !function_exists('imagerotate')) {
             return;
         }
 
-        $path = rtrim((string) APP_PATH_DOCROOT, '/\\') . '/Resources/images/redcap-logo.png';
-        $source = is_file($path) ? @imagecreatefrompng($path) : false;
+        if ($backgroundImage['mode'] === 'redcap') {
+            if (!defined('APP_PATH_DOCROOT')) {
+                return;
+            }
+            $path = rtrim((string) APP_PATH_DOCROOT, '/\\') . '/Resources/images/redcap-logo.png';
+            $source = is_file($path) ? @imagecreatefrompng($path) : false;
+        } else {
+            $source = @imagecreatefromstring($backgroundImage['contents']);
+        }
         if ($source === false) {
-            return;
+            if ($backgroundImage['mode'] === 'redcap') {
+                return;
+            }
+            throw new \RuntimeException('The watermark background image could not be decoded.');
         }
 
         $sourceWidth = imagesx($source);
         $sourceHeight = imagesy($source);
-        $logoWidth = min(86, $sourceWidth);
-        $logoHeight = max(1, (int) round($sourceHeight * ($logoWidth / $sourceWidth)));
+        $scale = min(1, self::MAX_BACKGROUND_IMAGE_DISPLAY_DIMENSION / max($sourceWidth, $sourceHeight));
+        $logoWidth = max(1, (int) round($sourceWidth * $scale));
+        $logoHeight = max(1, (int) round($sourceHeight * $scale));
         $logo = imagecreatetruecolor($logoWidth, $logoHeight);
         if ($logo === false) {
             imagedestroy($source);

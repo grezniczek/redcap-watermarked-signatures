@@ -140,6 +140,26 @@ namespace {
         }
     }
 
+    class Files
+    {
+        public static $info = array();
+        public static $attributes = array();
+
+        public static function getEdocInfo($edocId, $projectId, $includeDeleted)
+        {
+            if (!isset(self::$info[$edocId])
+                || (int) (self::$info[$edocId]['project_id'] ?? 0) !== (int) $projectId) {
+                return null;
+            }
+            return self::$info[$edocId];
+        }
+
+        public static function getEdocContentsAttributes($edocId)
+        {
+            return self::$attributes[$edocId] ?? false;
+        }
+    }
+
     class UserRights
     {
         public static function convertFormRightsToArray($rightsString)
@@ -374,6 +394,65 @@ namespace {
     $module = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($module, 'proj', new FakeProject());
     setPrivateProperty($module, 'project_id', 123);
+
+    moduleAssert(invokePrivate($module, 'background_image_mode') === 'redcap', 'Unset background image mode did not use the REDCap-logo default.');
+    $module->projectSettings['background-image-mode'] = 'none';
+    moduleAssert(invokePrivate($module, 'background_image_mode') === 'none', 'The no-background mode was not accepted.');
+    $module->projectSettings['background-image-mode'] = 'invalid';
+    moduleAssert(invokePrivate($module, 'background_image_mode') === 'redcap', 'Invalid background image mode did not use the REDCap-logo default.');
+    $module->projectSettings = array();
+
+    $backgroundSource = imagecreatetruecolor(64, 24);
+    $backgroundWhite = imagecolorallocate($backgroundSource, 255, 255, 255);
+    $backgroundBlue = imagecolorallocate($backgroundSource, 20, 80, 190);
+    imagefilledrectangle($backgroundSource, 0, 0, 63, 23, $backgroundWhite);
+    imagestring($backgroundSource, 2, 4, 5, 'TEST', $backgroundBlue);
+    ob_start();
+    imagepng($backgroundSource);
+    $customBackgroundPng = ob_get_clean();
+    imagedestroy($backgroundSource);
+    Files::$info[99590] = array('project_id' => 123, 'mime_type' => 'image/png', 'doc_name' => 'watermark.png', 'doc_size' => strlen($customBackgroundPng));
+    Files::$attributes[99590] = array('image/png', 'watermark.png', $customBackgroundPng);
+
+    $customBackgroundModule = new WatermarkedSignaturesExternalModule();
+    $customBackgroundModule->framework = new FakeFramework();
+    $customBackgroundModule->projectSettings = array(
+        'background-image-mode' => 'custom',
+        'custom-background-image' => '99590'
+    );
+    setPrivateProperty($customBackgroundModule, 'proj', new FakeProject());
+    setPrivateProperty($customBackgroundModule, 'project_id', 123);
+    $customBackgroundProfile = invokePrivate($customBackgroundModule, 'background_image_profile');
+    moduleAssert($customBackgroundProfile['mode'] === 'custom', 'Configured custom background image was not selected.');
+    moduleAssert($customBackgroundProfile['requested_mode'] === 'custom', 'Configured custom background image lost its selected mode.');
+    moduleAssert($customBackgroundProfile['sha256'] === hash('sha256', $customBackgroundPng), 'Custom background image digest was not calculated.');
+    moduleAssert($customBackgroundProfile['contents'] === $customBackgroundPng, 'Custom background image contents were not read from REDCap storage.');
+    ob_start();
+    invokePrivate($customBackgroundModule, 'inject_capture_envelopes', array('consent', 417, 'data_entry'));
+    $customBackgroundConfig = injectedConfig(ob_get_clean());
+    $customBackgroundUpload = captureSignatureUpload(
+        $customBackgroundModule,
+        $customBackgroundConfig['envelopes']['participant_signature'],
+        $originalPng,
+        99591
+    );
+    moduleAssert($customBackgroundUpload['background_image_mode'] === 'custom', 'Upload provenance did not retain the selected custom background image mode.');
+    moduleAssert($customBackgroundUpload['background_image_effective_mode'] === 'custom', 'Upload provenance did not retain the applied custom background image mode.');
+    moduleAssert($customBackgroundUpload['background_image_sha256'] === hash('sha256', $customBackgroundPng), 'Upload provenance did not retain the custom background image digest.');
+
+    Files::$info[99592] = array('project_id' => 123, 'mime_type' => 'image/png', 'doc_name' => 'invalid.png');
+    Files::$attributes[99592] = array('image/png', 'invalid.png', 'not a PNG');
+    $invalidBackgroundModule = new WatermarkedSignaturesExternalModule();
+    $invalidBackgroundModule->projectSettings = array(
+        'background-image-mode' => 'custom',
+        'custom-background-image' => '99592'
+    );
+    setPrivateProperty($invalidBackgroundModule, 'proj', new FakeProject());
+    setPrivateProperty($invalidBackgroundModule, 'project_id', 123);
+    $invalidBackgroundProfile = invokePrivate($invalidBackgroundModule, 'background_image_profile');
+    moduleAssert($invalidBackgroundProfile['requested_mode'] === 'custom' && $invalidBackgroundProfile['mode'] === 'redcap', 'Invalid custom background image did not fall back to the REDCap logo.');
+    moduleAssert($invalidBackgroundProfile['sha256'] === null, 'Invalid custom background image retained a digest.');
+    moduleAssert($invalidBackgroundModule->logs[0][0] === 'sigwm_error_background_image', 'Invalid custom background image did not create a diagnostic event.');
 
     moduleAssert(invokePrivate($module, 'unbound_upload_retention_days', array(123)) === 90, 'Unset retention setting did not use the 90-day default.');
     $module->projectSettings['unbound-upload-retention-days'] = '0';

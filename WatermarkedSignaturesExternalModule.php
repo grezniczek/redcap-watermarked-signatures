@@ -58,6 +58,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
     const MAX_UNBOUND_UPLOAD_RETENTION_DAYS = 3650;
     const ORIGIN_DATA_ENTRY = "data_entry";
     const ORIGIN_SURVEY = "survey";
+    const BACKGROUND_IMAGE_REDCAP = "redcap";
+    const BACKGROUND_IMAGE_CUSTOM = "custom";
+    const BACKGROUND_IMAGE_NONE = "none";
 
     #region Hooks
 
@@ -395,6 +398,20 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             || !$this->is_valid_public_project_reference($upload["project_reference"])) {
             throw new \UnexpectedValueException("Upload provenance contains an invalid public project reference.");
         }
+        if (array_key_exists("background_image_mode", $upload)
+            && !$this->is_valid_background_image_mode($upload["background_image_mode"])) {
+            throw new \UnexpectedValueException("Upload provenance contains an invalid selected background image mode.");
+        }
+        if (array_key_exists("background_image_effective_mode", $upload)
+            && !$this->is_valid_background_image_mode($upload["background_image_effective_mode"])) {
+            throw new \UnexpectedValueException("Upload provenance contains an invalid applied background image mode.");
+        }
+        if (array_key_exists("background_image_sha256", $upload)
+            && $upload["background_image_sha256"] !== null
+            && (!is_string($upload["background_image_sha256"])
+                || !preg_match('/^[a-f0-9]{64}$/', $upload["background_image_sha256"]))) {
+            throw new \UnexpectedValueException("Upload provenance contains an invalid background image digest.");
+        }
 
         $scope = array(
             "v" => (int) $upload["watermark_version"],
@@ -684,6 +701,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         $capturedAt = gmdate("Y-m-d\TH:i:s\Z");
 
         try {
+            $backgroundImage = $this->background_image_profile();
             $renderer = new Renderer();
             $watermarkedPng = $renderer->renderBase64(
                 isset($_POST["myfile_base64"]) ? $_POST["myfile_base64"] : "",
@@ -691,7 +709,8 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                 $payload["context_ref"],
                 $captureReference,
                 $capturedAt,
-                $payload["project_reference"]
+                $payload["project_reference"],
+                $backgroundImage
             );
         } catch (Throwable $exception) {
             $this->fail_upload($field, "sigwm_error_upload_render", $exception->getMessage());
@@ -715,7 +734,10 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             "captured_at" => $capturedAt,
             "file_sha256" => hash("sha256", $watermarkedPng),
             "envelope_nonce" => $payload["nonce"],
-            "watermark_version" => Renderer::VERSION
+            "watermark_version" => Renderer::VERSION,
+            "background_image_mode" => $backgroundImage["requested_mode"],
+            "background_image_effective_mode" => $backgroundImage["mode"],
+            "background_image_sha256" => $backgroundImage["sha256"]
         );
 
         $this->capture_edoc_id_from_response($field, $provenance);
@@ -1036,6 +1058,83 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             );
         }
         return $reference;
+    }
+
+    /**
+     * Resolve the project-owned asset immediately before rendering. The stored
+     * digest describes the exact file used even when an administrator later
+     * replaces the retained setting.
+     */
+    private function background_image_profile()
+    {
+        $requestedMode = $this->background_image_mode();
+        if ($requestedMode !== self::BACKGROUND_IMAGE_CUSTOM) {
+            return array(
+                "mode" => $requestedMode,
+                "requested_mode" => $requestedMode,
+                "contents" => null,
+                "sha256" => null
+            );
+        }
+
+        $edocId = $this->getProjectSetting("custom-background-image");
+        try {
+            if (!is_scalar($edocId) || !ctype_digit((string) $edocId) || (int) $edocId < 1) {
+                throw new \UnexpectedValueException("No custom background image is configured.");
+            }
+
+            $image = (new RedcapEdocReader())->read(
+                (int) $edocId,
+                (int) $this->project_id,
+                Renderer::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES
+            );
+            if (empty($image["exists"]) || empty($image["readable"]) || !isset($image["contents"])) {
+                throw new \UnexpectedValueException("The custom background image could not be read from REDCap storage.");
+            }
+
+            $contents = $image["contents"];
+            Renderer::validateCustomBackgroundImage($contents);
+            return array(
+                "mode" => self::BACKGROUND_IMAGE_CUSTOM,
+                "requested_mode" => self::BACKGROUND_IMAGE_CUSTOM,
+                "contents" => $contents,
+                "sha256" => hash("sha256", $contents)
+            );
+        } catch (Throwable $exception) {
+            // Do not block a signature because an optional presentation asset
+            // is unavailable. The provenance distinguishes the selection from
+            // the REDCap-logo fallback used for this individual capture.
+            $this->safe_log_event("sigwm_error_background_image", array(
+                "project_id" => (int) $this->project_id,
+                "background_image_mode" => self::BACKGROUND_IMAGE_CUSTOM,
+                "background_image_effective_mode" => self::BACKGROUND_IMAGE_REDCAP,
+                "background_image_edoc_id" => is_scalar($edocId) ? (string) $edocId : "",
+                "technical_message" => substr($exception->getMessage(), 0, 1000)
+            ));
+            return array(
+                "mode" => self::BACKGROUND_IMAGE_REDCAP,
+                "requested_mode" => self::BACKGROUND_IMAGE_CUSTOM,
+                "contents" => null,
+                "sha256" => null
+            );
+        }
+    }
+
+    private function background_image_mode()
+    {
+        $mode = $this->getProjectSetting("background-image-mode");
+        return $this->is_valid_background_image_mode($mode)
+            ? $mode
+            : self::BACKGROUND_IMAGE_REDCAP;
+    }
+
+    private function is_valid_background_image_mode($mode)
+    {
+        return is_string($mode) && in_array($mode, array(
+            self::BACKGROUND_IMAGE_REDCAP,
+            self::BACKGROUND_IMAGE_CUSTOM,
+            self::BACKGROUND_IMAGE_NONE
+        ), true);
     }
 
     private function is_valid_public_project_reference($reference)

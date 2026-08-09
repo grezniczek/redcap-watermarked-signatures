@@ -386,11 +386,13 @@ try {
 verificationAssert($duplicateRejected, 'Duplicate capture references were silently accepted.');
 
 $redcapEdocReader = new RedcapEdocReader();
-Files::$info[99001] = array('project_id' => 123, 'mime_type' => 'image/png', 'doc_name' => 'signature.png');
+Files::$info[99001] = array('project_id' => 123, 'mime_type' => 'image/png', 'doc_name' => 'signature.png', 'doc_size' => 12);
 Files::$attributes[99001] = array('image/png', 'signature.png', 'stored-bytes');
 $redcapEdoc = $redcapEdocReader->read(99001, 123);
 verificationAssert($redcapEdoc['exists'] && $redcapEdoc['readable'] && $redcapEdoc['contents'] === 'stored-bytes', 'REDCap edoc adapter did not read through Files.');
 verificationAssert($redcapEdocReader->read(99001, 999)['exists'] === false, 'REDCap edoc adapter did not enforce project ownership.');
+$oversizedEdoc = $redcapEdocReader->read(99001, 123, 11);
+verificationAssert($oversizedEdoc['exists'] && !$oversizedEdoc['readable'] && $oversizedEdoc['contents'] === null, 'REDCap edoc adapter did not reject an oversized read from metadata.');
 
 $currentValueReader = new RedcapCurrentValueReader();
 $classicBinding = $binding;

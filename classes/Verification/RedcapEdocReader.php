@@ -8,7 +8,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Verification;
  */
 class RedcapEdocReader
 {
-    public function read($edocId, $projectId)
+    public function read($edocId, $projectId, $maxContentsBytes = null)
     {
         $edocId = (int) $edocId;
         $projectId = (int) $projectId;
@@ -20,6 +20,18 @@ class RedcapEdocReader
                 'contents' => null,
                 'mime_type' => null,
                 'doc_name' => null
+            );
+        }
+        if ($maxContentsBytes !== null
+            && isset($info['doc_size'])
+            && is_numeric($info['doc_size'])
+            && (int) $info['doc_size'] > (int) $maxContentsBytes) {
+            return array(
+                'exists' => true,
+                'readable' => false,
+                'contents' => null,
+                'mime_type' => $info['mime_type'] ?? null,
+                'doc_name' => $info['doc_name'] ?? null
             );
         }
 

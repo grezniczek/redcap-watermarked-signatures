@@ -29,11 +29,16 @@ modified or given new provenance.
 |---|---|
 | **Retain unbound signature-upload provenance for this many days** | Leave the default of 90 days unless the project needs a different operational investigation period. Use `0` to disable automated cleanup; values above 3650 are capped at 3650 days. This applies only to uploads that never become bound to a saved record. |
 | **Public project reference** | Optional visible `REF:` text on future images. Use only a short public identifier (1–30 ASCII letters, digits, spaces, periods, hyphens, underscores, or slashes). Never enter a project title or any sensitive identifier. |
+| **Signature background image** | Leave the default REDCap logo, select a custom image, or remove the optional background image. The security-relevant identifier overlay and `WM1` footer are always present. |
+| **Custom signature background image** | Upload a PNG that is at least 16×16 and at most 512×512 pixels, and no larger than 1 MiB. It is retained even while the REDCap-logo or no-image mode is selected; switch the radio setting to use it. |
 | **Output debug information to the browser console** | Enable temporarily while diagnosing browser-side behavior, then disable it. |
 
-Changing the public project reference does not rewrite existing images. The
-module uses REDCap's normal edoc workflow and does not create a second image
-store.
+Changing the public project reference or background-image settings does not
+rewrite existing images. Each new capture records the selected and applied
+background profile; a valid custom-image capture also records the source file's
+SHA-256. If the selected custom image cannot be read or fails validation, the
+module logs an error and uses the REDCap logo for that capture. The module uses
+REDCap's normal edoc workflow and does not create a second image store.
 
 ## Use Control Center verification
 

@@ -111,6 +111,9 @@ function projectUiResult($captureReference)
             'edoc_id' => 98137,
             'file_sha256' => str_repeat('a', 64),
             'project_reference' => 'SIGWM-TEST',
+            'background_image_mode' => 'custom',
+            'background_image_effective_mode' => 'custom',
+            'background_image_sha256' => str_repeat('b', 64),
             'envelope_nonce' => 'must-not-be-presented',
             'pid' => 123,
             'instrument' => 'consent'
@@ -195,6 +198,9 @@ $presented = $controller->verify($captureReference);
 projectUiAssert($presented['status'] === 'valid_current' && $service->calls === 1, 'Authorized verification was not delegated to the service.');
 projectUiAssert($presented['details']['record_id'] === 'R-002', 'Authorized record details did not show the current record ID.');
 projectUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Authorized details did not show the public project reference.');
+projectUiAssert($presented['details']['background_image_mode'] === 'custom', 'Authorized details did not show the selected background image mode.');
+projectUiAssert($presented['details']['background_image_effective_mode'] === 'custom', 'Authorized details did not show the applied background image mode.');
+projectUiAssert($presented['details']['background_image_sha256'] === str_repeat('b', 64), 'Authorized details did not show the custom background image digest.');
 projectUiAssert($presented['details']['capture_ref'] === $captureReference, 'Authorized details did not retain the canonical S: capture-reference format.');
 projectUiAssert($presented['details']['context_ref'] === 'C:1111-2222-3333-4', 'Authorized details did not use the C: context-reference display format.');
 projectUiAssert($presented['details']['anchor'] === 'A:AAAA-BBBB-CCCC-DDDD', 'Authorized details did not use the A: anchor display format.');
@@ -256,6 +262,20 @@ projectUiAssert(count($projectLinks) === 1 && $projectLinks[0]['key'] === 'signa
 projectUiAssert(!array_key_exists('documentation', $projectLinks[0]), 'Project link contains an unsupported documentation configuration key.');
 projectUiAssert($projectLinks[0]['show-header-and-footer'] === true, 'Project verification page does not request the REDCap layout.');
 projectUiAssert(is_file(__DIR__ . '/../docs/project-user-guide.md'), 'Project verification documentation file is missing.');
+$projectSettings = array();
+foreach ($config['project-settings'] as $setting) {
+    $projectSettings[$setting['key'] ?? ''] = $setting;
+}
+$backgroundModeSetting = $projectSettings['background-image-mode'] ?? array();
+projectUiAssert(($backgroundModeSetting['type'] ?? null) === 'radio', 'Background image mode is not a radio project setting.');
+projectUiAssert(($backgroundModeSetting['default'] ?? null) === 'redcap', 'Background image mode does not default to the REDCap logo.');
+projectUiAssert(
+    array_column($backgroundModeSetting['choices'] ?? array(), 'value') === array('redcap', 'custom', 'none'),
+    'Background image mode choices are incomplete or out of order.'
+);
+$customBackgroundSetting = $projectSettings['custom-background-image'] ?? array();
+projectUiAssert(($customBackgroundSetting['type'] ?? null) === 'file' && ($customBackgroundSetting['required'] ?? true) === false, 'Custom background image is not an optional file project setting.');
+projectUiAssert(!array_key_exists('branchingLogic', $customBackgroundSetting), 'Custom background image is conditionally hidden instead of retained.');
 $english = parse_ini_file(__DIR__ . '/../lang/English.ini');
 projectUiAssert(is_array($english), 'English language file is invalid.');
 $german = parse_ini_file(__DIR__ . '/../lang/German.ini');
@@ -276,11 +296,18 @@ $translatedConfigurationKeys = array(
     $config['links']['control-center'][0]['tt_name'] ?? null,
     $config['links']['project'][0]['tt_name'] ?? null,
     $config['action-tags'][0]['description'] ?? null,
-    $config['project-settings'][0]['tt_name'] ?? null,
-    $config['project-settings'][1]['tt_name'] ?? null,
-    $config['project-settings'][2]['name'] ?? null,
     $config['crons'][0]['tt_cron_description'] ?? null
 );
+foreach ($config['project-settings'] as $setting) {
+    $translatedConfigurationKeys[] = ($setting['tt_name'] ?? null) === true
+        ? ($setting['name'] ?? null)
+        : ($setting['tt_name'] ?? null);
+    foreach ($setting['choices'] ?? array() as $choice) {
+        $translatedConfigurationKeys[] = ($choice['tt_name'] ?? null) === true
+            ? ($choice['name'] ?? null)
+            : ($choice['tt_name'] ?? null);
+    }
+}
 foreach ($translatedConfigurationKeys as $translationKey) {
     projectUiAssert(is_string($translationKey) && array_key_exists($translationKey, $english), 'A translated configuration field has no English language entry.');
 }

@@ -23,6 +23,9 @@ WM1 S:5622-9F1F-AHCA-K A:ABCD-1234-EFGH-5678 C:7JKM-9NPQ-RSTV-2
 TS:2026-08-09T12:34:56.789Z
 ```
 
+Depending on the project configuration, the signature may also have a faint
+repeated background image. It does not change the identifier overlay or footer.
+
 The value after `S:` is the **capture reference**. Keep the complete value when
 you need someone to verify an exported image. `TS:` is a server-generated UTC
 capture timestamp; it does not identify the signer or establish a qualified

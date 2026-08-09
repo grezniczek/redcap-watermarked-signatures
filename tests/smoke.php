@@ -122,6 +122,44 @@ if (extension_loaded('gd')) {
     assertTrue($info[0] === 460 && $info[1] === 158 && $info[2] === IMAGETYPE_PNG, 'Rendered PNG dimensions failed.');
     assertTrue(hash('sha256', $watermarked) !== hash('sha256', $png), 'Renderer did not change the PNG.');
 
+    $customBackground = signaturePng(64, 24, true, true);
+    $customBackgroundInfo = Renderer::validateCustomBackgroundImage($customBackground);
+    assertTrue(
+        $customBackgroundInfo === array('width' => 64, 'height' => 24),
+        'Custom background image dimensions were not returned correctly.'
+    );
+    $customBackgroundWatermark = $renderer->renderBase64(
+        base64_encode($png),
+        $anchor,
+        $payload['context_ref'],
+        $captureReference,
+        '2026-07-16T14:32:05Z',
+        null,
+        array('mode' => 'custom', 'contents' => $customBackground)
+    );
+    $noBackgroundWatermark = $renderer->renderBase64(
+        base64_encode($png),
+        $anchor,
+        $payload['context_ref'],
+        $captureReference,
+        '2026-07-16T14:32:05Z',
+        null,
+        array('mode' => 'none')
+    );
+    assertTrue(
+        !hash_equals($customBackgroundWatermark, $noBackgroundWatermark),
+        'A custom background image did not affect the rendered PNG.'
+    );
+    assertThrows(function () {
+        Renderer::validateCustomBackgroundImage(signaturePng(15, 16));
+    }, 'Renderer accepted a custom background image below the minimum dimensions.');
+    assertThrows(function () {
+        Renderer::validateCustomBackgroundImage(signaturePng(513, 16));
+    }, 'Renderer accepted a custom background image above the maximum dimensions.');
+    assertThrows(function () {
+        Renderer::validateCustomBackgroundImage('not a PNG');
+    }, 'Renderer accepted an invalid custom background image.');
+
     $publicReference = 'SIGWM-TEST-2026';
     $watermarkedWithReference = $renderer->renderBase64(
         base64_encode($png),

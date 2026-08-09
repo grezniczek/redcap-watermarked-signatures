@@ -63,6 +63,37 @@
             "type": "text"
         },
         {
+            "key": "background-image-mode",
+            "name": "Signature background image",
+            "tt_name": "config_background_image_mode",
+            "type": "radio",
+            "default": "redcap",
+            "choices": [
+                {
+                    "value": "redcap",
+                    "name": "Use the REDCap logo",
+                    "tt_name": "config_background_image_mode_redcap"
+                },
+                {
+                    "value": "custom",
+                    "name": "Use the custom image",
+                    "tt_name": "config_background_image_mode_custom"
+                },
+                {
+                    "value": "none",
+                    "name": "Do not use a background image",
+                    "tt_name": "config_background_image_mode_none"
+                }
+            ]
+        },
+        {
+            "key": "custom-background-image",
+            "name": "Custom signature background image (PNG, 16–512 pixels per side, at most 1 MiB; retained even when not selected)",
+            "tt_name": "config_custom_background_image",
+            "type": "file",
+            "required": false
+        },
+        {
             "key": "javascript-debug",
             "name": "config_javascript_debug",
             "tt_name": true,

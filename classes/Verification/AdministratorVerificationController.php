@@ -82,7 +82,8 @@ class AdministratorVerificationController
         $this->copy($details, $upload, array(
             'capture_ref', 'context_ref', 'anchor', 'capture_origin',
             'capture_username', 'captured_at', 'edoc_id', 'file_sha256',
-            'project_reference',
+            'project_reference', 'background_image_mode',
+            'background_image_effective_mode', 'background_image_sha256',
             'watermark_version'
         ));
         $this->copy($details, $binding, array(

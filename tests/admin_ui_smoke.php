@@ -115,6 +115,9 @@ $service->result = array(
         'edoc_id' => 1903,
         'file_sha256' => str_repeat('a', 64),
         'project_reference' => 'SIGWM-TEST',
+        'background_image_mode' => 'custom',
+        'background_image_effective_mode' => 'custom',
+        'background_image_sha256' => str_repeat('b', 64),
         'watermark_version' => 1,
         'envelope_nonce' => 'must-not-be-presented'
     ),
@@ -147,6 +150,9 @@ adminUiAssert($presented['details']['upload_project_id'] === 461, 'Upload projec
 adminUiAssert($presented['details']['binding_log_id'] === 88, 'Binding log ID was not presented.');
 adminUiAssert($presented['details']['record_id'] === '12', 'Administrator details did not present the current record ID.');
 adminUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Administrator details did not present the public project reference.');
+adminUiAssert($presented['details']['background_image_mode'] === 'custom', 'Administrator details did not present the selected background image mode.');
+adminUiAssert($presented['details']['background_image_effective_mode'] === 'custom', 'Administrator details did not present the applied background image mode.');
+adminUiAssert($presented['details']['background_image_sha256'] === str_repeat('b', 64), 'Administrator details did not present the custom background image digest.');
 adminUiAssert($presented['details']['capture_ref'] === $captureReference, 'Administrator details did not retain the canonical S: capture-reference format.');
 adminUiAssert($presented['details']['context_ref'] === 'C:1111-2222-3333-4', 'Administrator details did not use the C: context-reference display format.');
 adminUiAssert($presented['details']['anchor'] === 'A:AAAA-BBBB-CCCC-DDDD', 'Administrator details did not use the A: anchor display format.');
