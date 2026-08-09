@@ -25,20 +25,19 @@ modified or given new provenance.
 
 ### Project settings
 
+Project designers and REDCap superusers use **Configure Watermarked Signatures** in the project module links to configure future captures. The standard External Module settings dialog contains only the browser-debug option.
+
 | Setting | Recommended use |
 |---|---|
 | **Retain unbound signature-upload provenance for this many days** | Leave the default of 90 days unless the project needs a different operational investigation period. Use `0` to disable automated cleanup; values above 3650 are capped at 3650 days. This applies only to uploads that never become bound to a saved record. |
 | **Public project reference** | Optional visible `REF:` text on future images. Use only a short public identifier (1–30 ASCII letters, digits, spaces, periods, hyphens, underscores, or slashes). Never enter a project title or any sensitive identifier. |
 | **Signature background image** | Leave the default REDCap logo, select a custom image, or remove the optional background image. The security-relevant identifier overlay and `WM1` footer are always present. |
-| **Custom signature background image** | Upload a PNG that is at least 16×16 and at most 512×512 pixels, and no larger than 1 MiB. It is retained even while the REDCap-logo or no-image mode is selected; switch the radio setting to use it. |
-| **Output debug information to the browser console** | Enable temporarily while diagnosing browser-side behavior, then disable it. |
+| **Custom signature background image** | Upload a PNG up to 6 MiB. Each side must be 16–4096 pixels and the image may contain at most 12 million pixels. The page normalizes it before storage to no more than 512 pixels per side and 1 MiB. Its aspect ratio must leave at least 16 pixels per side after normalization. The stored image remains available while the REDCap-logo or no-image mode is selected. |
+| **Custom image rotation** | Applies only to a custom image. Choose a whole-number rotation from -180° through 180°; positive values rotate counterclockwise. Use the live preview to review a replacement image and rotation before saving. |
 
-Changing the public project reference or background-image settings does not
-rewrite existing images. Each new capture records the selected and applied
-background profile; a valid custom-image capture also records the source file's
-SHA-256. If the selected custom image cannot be read or fails validation, the
-module logs an error and uses the REDCap logo for that capture. The module uses
-REDCap's normal edoc workflow and does not create a second image store.
+**Output debug information to the browser console** remains in REDCap's standard External Module settings dialog. Enable it temporarily while diagnosing browser-side behavior, then disable it.
+
+Changing the public project reference or background-image settings does not rewrite existing images. Each new capture records the selected and applied background profile, including applied rotation; a valid custom-image capture also records the source file's SHA-256. If the selected custom image cannot be read or fails validation, the module logs an error and uses the REDCap logo for that capture. The module uses REDCap's normal edoc workflow and does not create a second image store.
 
 ## Use Control Center verification
 

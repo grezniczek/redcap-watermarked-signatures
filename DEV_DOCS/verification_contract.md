@@ -154,3 +154,9 @@ lookup setup, then pass a scope-specific view model to one shared rendering
 partial. The partial contains only presentation logic; it uses REDCap's project
 page heading style for project verification and the Control Center heading style
 for administrator verification.
+
+## Project configuration page
+
+The project module link **Configure Watermarked Signatures** is available only to superusers and users with project design rights. Its backing project settings remain hidden in the standard External Module dialog, except for browser-debug output. The page validates the unbound-upload retention period, public project reference, image mode, custom-image rotation, and optional PNG upload before persisting through the framework setting API.
+
+Custom PNG uploads may be at most 6 MiB and 4096 pixels per side, subject to the renderer's 12-million-pixel input limit. Before creating the project edoc, the page decodes and normalizes the image with GD to at most 512 pixels per side and 1 MiB, preserving transparency and aspect ratio. The result must retain at least 16 pixels per side. The current stored image is retained when no replacement is uploaded, including while the REDCap-logo or no-image mode is selected. Custom-image rotation is an integer in the inclusive range -180 through 180; it is recorded in upload provenance with the selected and applied background modes and custom-image SHA-256.

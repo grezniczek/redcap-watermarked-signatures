@@ -14,7 +14,11 @@ class Renderer
     const MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION = 16;
     const MAX_CUSTOM_BACKGROUND_IMAGE_DIMENSION = 512;
     const MAX_CUSTOM_BACKGROUND_IMAGE_BYTES = 1048576;
+    const MAX_CUSTOM_BACKGROUND_IMAGE_UPLOAD_BYTES = 6291456;
     const MAX_BACKGROUND_IMAGE_DISPLAY_DIMENSION = 86;
+    const DEFAULT_BACKGROUND_IMAGE_ROTATION = 20;
+    const MIN_BACKGROUND_IMAGE_ROTATION = -180;
+    const MAX_BACKGROUND_IMAGE_ROTATION = 180;
     const MIN_OUTPUT_WIDTH = 460;
     const FOOTER_HEIGHT = 38;
     const MAX_PROJECT_REFERENCE_LENGTH = 30;
@@ -176,6 +180,86 @@ class Renderer
         return array('width' => $width, 'height' => $height);
     }
 
+    /**
+     * Convert a project administrator's PNG upload into the bounded source
+     * asset used for every signature. This keeps costly resampling out of the
+     * capture path while preserving transparency.
+     */
+    public static function normalizeCustomBackgroundImage($contents)
+    {
+        if (!extension_loaded('gd')) {
+            throw new \RuntimeException('The GD PHP extension is required to normalize custom background images.');
+        }
+        if (!is_string($contents) || $contents === '') {
+            throw new \InvalidArgumentException('The custom background image is empty.');
+        }
+        if (strlen($contents) > self::MAX_CUSTOM_BACKGROUND_IMAGE_UPLOAD_BYTES) {
+            throw new \InvalidArgumentException('The uploaded custom background image is too large.');
+        }
+
+        $imageInfo = @getimagesizefromstring($contents);
+        if ($imageInfo === false || $imageInfo[2] !== IMAGETYPE_PNG) {
+            throw new \InvalidArgumentException('The custom background image must be a valid PNG image.');
+        }
+
+        $sourceWidth = (int) $imageInfo[0];
+        $sourceHeight = (int) $imageInfo[1];
+        if ($sourceWidth < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
+            || $sourceHeight < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
+            || $sourceWidth > self::MAX_DIMENSION
+            || $sourceHeight > self::MAX_DIMENSION
+            || ($sourceWidth * $sourceHeight) > self::MAX_PIXELS) {
+            throw new \InvalidArgumentException('The uploaded custom background image dimensions are not allowed.');
+        }
+
+        $source = @imagecreatefromstring($contents);
+        if ($source === false) {
+            throw new \InvalidArgumentException('The uploaded custom background image PNG could not be decoded.');
+        }
+
+        try {
+            $scale = min(1, self::MAX_CUSTOM_BACKGROUND_IMAGE_DIMENSION / max($sourceWidth, $sourceHeight));
+            $targetWidth = (int) round($sourceWidth * $scale);
+            $targetHeight = (int) round($sourceHeight * $scale);
+            if ($targetWidth < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
+                || $targetHeight < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
+                throw new \InvalidArgumentException('The uploaded custom background image aspect ratio is not allowed.');
+            }
+
+            while (true) {
+                $normalized = self::resamplePngImage($source, $sourceWidth, $sourceHeight, $targetWidth, $targetHeight);
+                $output = self::encodePngImage($normalized);
+                imagedestroy($normalized);
+
+                if (strlen($output) <= self::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES) {
+                    self::validateCustomBackgroundImage($output);
+                    return $output;
+                }
+
+                $scale = sqrt((self::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES / strlen($output)) * 0.95);
+                $nextWidth = (int) floor($targetWidth * $scale);
+                $nextHeight = (int) floor($targetHeight * $scale);
+                if ($nextWidth < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
+                    || $nextHeight < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
+                    throw new \InvalidArgumentException('The custom background image could not be normalized within the file-size limit.');
+                }
+                if ($nextWidth >= $targetWidth && $targetWidth > self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
+                    $nextWidth = $targetWidth - 1;
+                }
+                if ($nextHeight >= $targetHeight && $targetHeight > self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
+                    $nextHeight = $targetHeight - 1;
+                }
+                if ($nextWidth === $targetWidth && $nextHeight === $targetHeight) {
+                    throw new \InvalidArgumentException('The custom background image could not be normalized within the file-size limit.');
+                }
+                $targetWidth = $nextWidth;
+                $targetHeight = $nextHeight;
+            }
+        } finally {
+            imagedestroy($source);
+        }
+    }
+
     private static function validateWatermarkValues($anchor, $contextReference, $captureReference, $capturedAt, $projectReference)
     {
         $alphabet = '[0-9A-HJKMNP-TV-Z]';
@@ -202,7 +286,7 @@ class Renderer
     private static function normalizeBackgroundImage($backgroundImage)
     {
         if ($backgroundImage === null) {
-            return array('mode' => 'redcap', 'contents' => null);
+            return array('mode' => 'redcap', 'contents' => null, 'rotation' => self::DEFAULT_BACKGROUND_IMAGE_ROTATION);
         }
         if (!is_array($backgroundImage) || !isset($backgroundImage['mode'])) {
             throw new \InvalidArgumentException('The watermark background image profile is invalid.');
@@ -212,13 +296,63 @@ class Renderer
         if (!in_array($mode, array('redcap', 'custom', 'none'), true)) {
             throw new \InvalidArgumentException('The watermark background image mode is invalid.');
         }
-        if ($mode !== 'custom') {
-            return array('mode' => $mode, 'contents' => null);
+        if ($mode === 'redcap') {
+            return array('mode' => 'redcap', 'contents' => null, 'rotation' => self::DEFAULT_BACKGROUND_IMAGE_ROTATION);
+        }
+        if ($mode === 'none') {
+            return array('mode' => 'none', 'contents' => null, 'rotation' => 0);
         }
 
         $contents = $backgroundImage['contents'] ?? null;
         self::validateCustomBackgroundImage($contents);
-        return array('mode' => 'custom', 'contents' => $contents);
+        return array(
+            'mode' => 'custom',
+            'contents' => $contents,
+            'rotation' => self::normalizeBackgroundImageRotation($backgroundImage['rotation'] ?? self::DEFAULT_BACKGROUND_IMAGE_ROTATION)
+        );
+    }
+
+    private static function normalizeBackgroundImageRotation($rotation)
+    {
+        if (is_int($rotation)) {
+            $normalized = $rotation;
+        } elseif (is_string($rotation) && preg_match('/^-?(?:0|[1-9][0-9]{0,2})$/D', $rotation)) {
+            $normalized = (int) $rotation;
+        } else {
+            throw new \InvalidArgumentException('The custom background image rotation is invalid.');
+        }
+        if ($normalized < self::MIN_BACKGROUND_IMAGE_ROTATION || $normalized > self::MAX_BACKGROUND_IMAGE_ROTATION) {
+            throw new \InvalidArgumentException('The custom background image rotation is not allowed.');
+        }
+        return $normalized;
+    }
+
+    private static function resamplePngImage($source, $sourceWidth, $sourceHeight, $targetWidth, $targetHeight)
+    {
+        $target = imagecreatetruecolor($targetWidth, $targetHeight);
+        if ($target === false) {
+            throw new \RuntimeException('Could not allocate the normalized custom background image.');
+        }
+        imagealphablending($target, false);
+        imagesavealpha($target, true);
+        $transparent = imagecolorallocatealpha($target, 255, 255, 255, 127);
+        imagefilledrectangle($target, 0, 0, $targetWidth - 1, $targetHeight - 1, $transparent);
+        if (!imagecopyresampled($target, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight)) {
+            imagedestroy($target);
+            throw new \RuntimeException('Could not normalize the custom background image.');
+        }
+        return $target;
+    }
+
+    private static function encodePngImage($image)
+    {
+        ob_start();
+        $encoded = imagepng($image, null, 9);
+        $output = ob_get_clean();
+        if (!$encoded || !is_string($output) || $output === '') {
+            throw new \RuntimeException('Could not encode the normalized custom background image.');
+        }
+        return $output;
     }
 
     private static function compact($value)
@@ -286,7 +420,7 @@ class Renderer
             }
         }
 
-        $rotated = imagerotate($logo, 20, $transparent);
+        $rotated = imagerotate($logo, $backgroundImage['rotation'], $transparent);
         imagedestroy($logo);
         if ($rotated === false) {
             return;

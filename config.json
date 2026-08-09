@@ -30,6 +30,14 @@
         ],
         "project": [
             {
+                "name": "Configure Watermarked Signatures",
+                "tt_name": "config_project_settings_link",
+                "key": "project-settings",
+                "icon": "fa-solid fa-sliders",
+                "url": "pages/project-settings.php",
+                "show-header-and-footer": true
+            },
+            {
                 "name": "Verify watermarked signature",
                 "tt_name": "config_project_verification_link",
                 "key": "signature-verification",
@@ -54,13 +62,15 @@
             "name": "Retain unbound signature-upload provenance for this many days (0 disables automatic purging)",
             "tt_name": "config_unbound_upload_retention_days",
             "type": "text",
-            "default": "90"
+            "default": "90",
+            "hidden": true
         },
         {
             "key": "public-project-reference",
             "name": "Public project reference printed as REF: on every new watermarked signature (optional; 1–30 ASCII letters, digits, spaces, dots, hyphens, underscores, or slashes). This is visible on exported images and should not reveal sensitive project information.",
             "tt_name": "config_public_project_reference",
-            "type": "text"
+            "type": "text",
+            "hidden": true
         },
         {
             "key": "background-image-mode",
@@ -68,6 +78,7 @@
             "tt_name": "config_background_image_mode",
             "type": "radio",
             "default": "redcap",
+            "hidden": true,
             "choices": [
                 {
                     "value": "redcap",
@@ -91,7 +102,16 @@
             "name": "Custom signature background image (PNG, 16–512 pixels per side, at most 1 MiB; retained even when not selected)",
             "tt_name": "config_custom_background_image",
             "type": "file",
-            "required": false
+            "required": false,
+            "hidden": true
+        },
+        {
+            "key": "background-image-rotation",
+            "name": "Custom signature background image rotation in degrees (-180 to 180)",
+            "tt_name": "config_background_image_rotation",
+            "type": "text",
+            "default": "20",
+            "hidden": true
         },
         {
             "key": "javascript-debug",

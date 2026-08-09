@@ -55,20 +55,19 @@ are not configured by REDCap as Signature or Enhanced Signature fields.
 
 ### Project settings
 
-The module has five project settings.
+Project designers and REDCap superusers configure future captures through **Configure Watermarked Signatures** in the project's module links. The usual External Module configuration dialog retains only the browser-debug option.
 
 | Setting | Default | Guidance |
 |---|---:|---|
 | **Retain unbound signature-upload provenance for this many days** | 90 days | Controls cleanup of captures that were uploaded but never bound by a successful form save. Use `0` to retain them indefinitely. Values above 3650 are capped at 3650 days. Successful bindings, rename history, and error events are retained. |
 | **Public project reference** | Blank | An optional 1–30 character public identifier printed as `REF:` on every newly captured image. It may use ASCII letters, digits, spaces, periods, hyphens, underscores, or slashes. Do not use a project title, protocol number, or any other value that should not be visible in exports and screenshots. |
 | **Signature background image** | REDCap logo | Select the faint, repeated background: the REDCap logo, a custom project image, or no background image. The identifier overlay and `WM1` footer are always added. |
-| **Custom signature background image** | Blank | Upload a PNG that is 16–512 pixels on each side and no larger than 1 MiB. The file is retained even when another background mode is selected, so it can be enabled again later. |
-| **Output debug information to the browser console** | Off | Use only while troubleshooting client-side behavior, then turn it off. |
+| **Custom signature background image** | Blank | Upload a PNG up to 6 MiB. Each side must be 16–4096 pixels and the image may contain at most 12 million pixels. It is normalized before storage to at most 512 pixels per side and 1 MiB. The aspect ratio must leave at least 16 pixels per side after normalization. The stored image is retained even when another background mode is selected. |
+| **Custom image rotation** | 20° | Applies only to the custom image. Select a whole-number rotation from -180° through 180°; positive values rotate counterclockwise. The page previews a replacement image and its selected rotation before it is saved. |
 
-Changing the public project reference or background-image settings affects only
-future captures. It does not modify existing images or their recorded
-provenance. If the custom image is unavailable or invalid when a signature is
-captured, the module logs the issue and uses the REDCap logo for that capture.
+**Output debug information to the browser console** remains in REDCap's standard External Module settings dialog. Enable it only while troubleshooting client-side behavior, then turn it off.
+
+Changing the public project reference or background-image settings affects only future captures. It does not modify existing images or their recorded provenance. Each capture records the requested and applied image modes, the applied rotation, and—when a custom image was used—its SHA-256. If the custom image is unavailable or invalid when a signature is captured, the module logs the issue and uses the REDCap logo for that capture.
 
 ## Capture a signature
 

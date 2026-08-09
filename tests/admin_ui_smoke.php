@@ -118,6 +118,7 @@ $service->result = array(
         'background_image_mode' => 'custom',
         'background_image_effective_mode' => 'custom',
         'background_image_sha256' => str_repeat('b', 64),
+        'background_image_rotation' => -30,
         'watermark_version' => 1,
         'envelope_nonce' => 'must-not-be-presented'
     ),
@@ -153,6 +154,7 @@ adminUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Admi
 adminUiAssert($presented['details']['background_image_mode'] === 'custom', 'Administrator details did not present the selected background image mode.');
 adminUiAssert($presented['details']['background_image_effective_mode'] === 'custom', 'Administrator details did not present the applied background image mode.');
 adminUiAssert($presented['details']['background_image_sha256'] === str_repeat('b', 64), 'Administrator details did not present the custom background image digest.');
+adminUiAssert($presented['details']['background_image_rotation'] === -30, 'Administrator details did not present the applied background image rotation.');
 adminUiAssert($presented['details']['capture_ref'] === $captureReference, 'Administrator details did not retain the canonical S: capture-reference format.');
 adminUiAssert($presented['details']['context_ref'] === 'C:1111-2222-3333-4', 'Administrator details did not use the C: context-reference display format.');
 adminUiAssert($presented['details']['anchor'] === 'A:AAAA-BBBB-CCCC-DDDD', 'Administrator details did not use the A: anchor display format.');

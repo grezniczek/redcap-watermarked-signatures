@@ -159,6 +159,45 @@ if (extension_loaded('gd')) {
     assertThrows(function () {
         Renderer::validateCustomBackgroundImage('not a PNG');
     }, 'Renderer accepted an invalid custom background image.');
+    $normalizedBackground = Renderer::normalizeCustomBackgroundImage(signaturePng(1024, 512, true, true));
+    $normalizedBackgroundInfo = Renderer::validateCustomBackgroundImage($normalizedBackground);
+    assertTrue(
+        $normalizedBackgroundInfo === array('width' => 512, 'height' => 256),
+        'Renderer did not normalize a large custom background image to the stored dimensions.'
+    );
+    $zeroRotationWatermark = $renderer->renderBase64(
+        base64_encode($png),
+        $anchor,
+        $payload['context_ref'],
+        $captureReference,
+        '2026-07-16T14:32:05Z',
+        null,
+        array('mode' => 'custom', 'contents' => $customBackground, 'rotation' => 0)
+    );
+    $rightAngleRotationWatermark = $renderer->renderBase64(
+        base64_encode($png),
+        $anchor,
+        $payload['context_ref'],
+        $captureReference,
+        '2026-07-16T14:32:05Z',
+        null,
+        array('mode' => 'custom', 'contents' => $customBackground, 'rotation' => 90)
+    );
+    assertTrue(
+        !hash_equals($zeroRotationWatermark, $rightAngleRotationWatermark),
+        'Custom background image rotation did not affect the rendered PNG.'
+    );
+    assertThrows(function () use ($renderer, $png, $anchor, $payload, $captureReference, $customBackground) {
+        $renderer->renderBase64(
+            base64_encode($png),
+            $anchor,
+            $payload['context_ref'],
+            $captureReference,
+            '2026-07-16T14:32:05Z',
+            null,
+            array('mode' => 'custom', 'contents' => $customBackground, 'rotation' => 181)
+        );
+    }, 'Renderer accepted an invalid custom background image rotation.');
 
     $publicReference = 'SIGWM-TEST-2026';
     $watermarkedWithReference = $renderer->renderBase64(

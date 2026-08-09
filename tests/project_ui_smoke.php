@@ -114,6 +114,7 @@ function projectUiResult($captureReference)
             'background_image_mode' => 'custom',
             'background_image_effective_mode' => 'custom',
             'background_image_sha256' => str_repeat('b', 64),
+            'background_image_rotation' => -30,
             'envelope_nonce' => 'must-not-be-presented',
             'pid' => 123,
             'instrument' => 'consent'
@@ -201,6 +202,7 @@ projectUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Au
 projectUiAssert($presented['details']['background_image_mode'] === 'custom', 'Authorized details did not show the selected background image mode.');
 projectUiAssert($presented['details']['background_image_effective_mode'] === 'custom', 'Authorized details did not show the applied background image mode.');
 projectUiAssert($presented['details']['background_image_sha256'] === str_repeat('b', 64), 'Authorized details did not show the custom background image digest.');
+projectUiAssert($presented['details']['background_image_rotation'] === -30, 'Authorized details did not show the applied background image rotation.');
 projectUiAssert($presented['details']['capture_ref'] === $captureReference, 'Authorized details did not retain the canonical S: capture-reference format.');
 projectUiAssert($presented['details']['context_ref'] === 'C:1111-2222-3333-4', 'Authorized details did not use the C: context-reference display format.');
 projectUiAssert($presented['details']['anchor'] === 'A:AAAA-BBBB-CCCC-DDDD', 'Authorized details did not use the A: anchor display format.');
@@ -258,9 +260,19 @@ projectUiAssert($invalidMacResult['status'] === 'invalid' && empty($invalidMacRe
 $config = json_decode(file_get_contents(__DIR__ . '/../config.json'), true);
 projectUiAssert(is_array($config), 'config.json is invalid JSON.');
 $projectLinks = $config['links']['project'] ?? array();
-projectUiAssert(count($projectLinks) === 1 && $projectLinks[0]['key'] === 'signature-verification', 'Project verification link is not configured.');
-projectUiAssert(!array_key_exists('documentation', $projectLinks[0]), 'Project link contains an unsupported documentation configuration key.');
-projectUiAssert($projectLinks[0]['show-header-and-footer'] === true, 'Project verification page does not request the REDCap layout.');
+$projectLinksByKey = array();
+foreach ($projectLinks as $projectLink) {
+    $projectLinksByKey[$projectLink['key'] ?? ''] = $projectLink;
+}
+projectUiAssert(count($projectLinksByKey) === 2, 'Project settings and verification links are not both configured.');
+$projectSettingsLink = $projectLinksByKey['project-settings'] ?? array();
+$projectVerificationLink = $projectLinksByKey['signature-verification'] ?? array();
+projectUiAssert(($projectSettingsLink['url'] ?? null) === 'pages/project-settings.php', 'Project settings link is not configured.');
+projectUiAssert(($projectVerificationLink['url'] ?? null) === 'pages/verify-signature.php', 'Project verification link is not configured.');
+projectUiAssert(!array_key_exists('documentation', $projectSettingsLink), 'Project settings link contains an unsupported documentation configuration key.');
+projectUiAssert(!array_key_exists('documentation', $projectVerificationLink), 'Project verification link contains an unsupported documentation configuration key.');
+projectUiAssert(($projectSettingsLink['show-header-and-footer'] ?? false) === true, 'Project settings page does not request the REDCap layout.');
+projectUiAssert(($projectVerificationLink['show-header-and-footer'] ?? false) === true, 'Project verification page does not request the REDCap layout.');
 projectUiAssert(is_file(__DIR__ . '/../docs/project-user-guide.md'), 'Project verification documentation file is missing.');
 $projectSettings = array();
 foreach ($config['project-settings'] as $setting) {
@@ -269,6 +281,7 @@ foreach ($config['project-settings'] as $setting) {
 $backgroundModeSetting = $projectSettings['background-image-mode'] ?? array();
 projectUiAssert(($backgroundModeSetting['type'] ?? null) === 'radio', 'Background image mode is not a radio project setting.');
 projectUiAssert(($backgroundModeSetting['default'] ?? null) === 'redcap', 'Background image mode does not default to the REDCap logo.');
+projectUiAssert(($backgroundModeSetting['hidden'] ?? false) === true, 'Background image mode is still exposed in the standard settings dialog.');
 projectUiAssert(
     array_column($backgroundModeSetting['choices'] ?? array(), 'value') === array('redcap', 'custom', 'none'),
     'Background image mode choices are incomplete or out of order.'
@@ -276,6 +289,13 @@ projectUiAssert(
 $customBackgroundSetting = $projectSettings['custom-background-image'] ?? array();
 projectUiAssert(($customBackgroundSetting['type'] ?? null) === 'file' && ($customBackgroundSetting['required'] ?? true) === false, 'Custom background image is not an optional file project setting.');
 projectUiAssert(!array_key_exists('branchingLogic', $customBackgroundSetting), 'Custom background image is conditionally hidden instead of retained.');
+projectUiAssert(($customBackgroundSetting['hidden'] ?? false) === true, 'Custom background image is still exposed in the standard settings dialog.');
+$rotationSetting = $projectSettings['background-image-rotation'] ?? array();
+projectUiAssert(($rotationSetting['type'] ?? null) === 'text' && ($rotationSetting['default'] ?? null) === '20' && ($rotationSetting['hidden'] ?? false) === true, 'Custom image rotation is not retained as a hidden project setting.');
+foreach (array('unbound-upload-retention-days', 'public-project-reference') as $hiddenSettingKey) {
+    projectUiAssert(($projectSettings[$hiddenSettingKey]['hidden'] ?? false) === true, 'Custom project setting is still exposed in the standard settings dialog: ' . $hiddenSettingKey);
+}
+projectUiAssert(($projectSettings['javascript-debug']['hidden'] ?? false) !== true, 'Browser debug should remain in the standard settings dialog.');
 $english = parse_ini_file(__DIR__ . '/../lang/English.ini');
 projectUiAssert(is_array($english), 'English language file is invalid.');
 $german = parse_ini_file(__DIR__ . '/../lang/German.ini');
@@ -294,10 +314,12 @@ $translatedConfigurationKeys = array(
     $config['tt_description'] ?? null,
     $config['documentation'] ?? null,
     $config['links']['control-center'][0]['tt_name'] ?? null,
-    $config['links']['project'][0]['tt_name'] ?? null,
     $config['action-tags'][0]['description'] ?? null,
     $config['crons'][0]['tt_cron_description'] ?? null
 );
+foreach ($config['links']['project'] as $projectLink) {
+    $translatedConfigurationKeys[] = $projectLink['tt_name'] ?? null;
+}
 foreach ($config['project-settings'] as $setting) {
     $translatedConfigurationKeys[] = ($setting['tt_name'] ?? null) === true
         ? ($setting['name'] ?? null)
@@ -313,6 +335,7 @@ foreach ($translatedConfigurationKeys as $translationKey) {
 }
 $localizationSources = array(
     __DIR__ . '/../WatermarkedSignaturesExternalModule.php',
+    __DIR__ . '/../pages/project-settings.php',
     __DIR__ . '/../pages/verify-signature.php',
     __DIR__ . '/../pages/admin-verify-signature.php',
     __DIR__ . '/../pages/partials/verification-page.php'
@@ -326,6 +349,8 @@ foreach ($localizationSources as $sourcePath) {
 }
 
 $entrySource = file_get_contents(__DIR__ . '/../pages/verify-signature.php');
+$settingsPageSource = file_get_contents(__DIR__ . '/../pages/project-settings.php');
+$settingsScriptSource = file_get_contents(__DIR__ . '/../js/project-settings.js');
 $pageSource = file_get_contents(__DIR__ . '/../pages/partials/verification-page.php');
 projectUiAssert(strpos($entrySource, "'is_administrator' => false") !== false, 'Project verification entry point does not declare project scope.');
 projectUiAssert(strpos($entrySource, "require __DIR__ . '/partials/verification-page.php'") !== false, 'Project verification entry point does not use the shared page partial.');
@@ -345,5 +370,14 @@ projectUiAssert(strpos($pageSource, "captureReference.addEventListener('search'"
 projectUiAssert(strpos($pageSource, 'id="sigwm-verification-result"') !== false, 'Verification result wrapper is missing.');
 projectUiAssert(strpos($pageSource, "result.remove()") !== false, 'Verification search clear handler does not clear the result.');
 projectUiAssert(strpos($pageSource, 'Go to field') !== false, 'Verification details do not include a field-navigation link.');
+projectUiAssert(strpos($settingsPageSource, 'get_project_settings_state') !== false, 'Project settings page does not retrieve the saved settings.');
+projectUiAssert(strpos($settingsPageSource, 'save_project_settings') !== false, 'Project settings page does not save through the module API.');
+projectUiAssert(strpos($settingsPageSource, 'redcap_csrf_token') !== false, 'Project settings form is missing the REDCap CSRF token.');
+projectUiAssert(strpos($settingsPageSource, 'enctype="multipart/form-data"') !== false, 'Project settings form cannot upload custom images.');
+projectUiAssert(strpos($settingsPageSource, 'accept="image/png,.png"') !== false, 'Project settings form does not restrict custom uploads to PNG files.');
+projectUiAssert(strpos($settingsPageSource, 'type="range"') !== false, 'Project settings form does not provide a rotation control.');
+projectUiAssert(strpos($settingsPageSource, "getUrl('js/project-settings.js')") !== false, 'Project settings page does not load its preview script.');
+projectUiAssert(strpos($settingsScriptSource, 'FileReader') !== false, 'Project settings preview does not load replacement images locally.');
+projectUiAssert(strpos($settingsScriptSource, "rotate(' + rotation.value + 'deg)") !== false, 'Project settings preview does not reflect the configured rotation.');
 
 echo "Watermarked Signatures project UI smoke tests passed.\n";

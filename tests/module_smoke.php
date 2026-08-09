@@ -144,6 +144,7 @@ namespace {
     {
         public static $info = array();
         public static $attributes = array();
+        public static $nextEdocId = 99600;
 
         public static function getEdocInfo($edocId, $projectId, $includeDeleted)
         {
@@ -157,6 +158,23 @@ namespace {
         public static function getEdocContentsAttributes($edocId)
         {
             return self::$attributes[$edocId] ?? false;
+        }
+
+        public static function uploadFile($file, $projectId)
+        {
+            $contents = isset($file['tmp_name']) ? @file_get_contents($file['tmp_name']) : false;
+            if (!is_string($contents) || $contents === '') {
+                return 0;
+            }
+            $edocId = self::$nextEdocId++;
+            self::$info[$edocId] = array(
+                'project_id' => (int) $projectId,
+                'mime_type' => 'image/png',
+                'doc_name' => $file['name'] ?? 'upload.png',
+                'doc_size' => strlen($contents)
+            );
+            self::$attributes[$edocId] = array('image/png', self::$info[$edocId]['doc_name'], $contents);
+            return $edocId;
         }
     }
 
@@ -188,6 +206,8 @@ namespace {
 
     class FakeFramework
     {
+        public $module;
+
         public function getUrl($file)
         {
             return '/modules/watermarked_signatures/' . $file;
@@ -200,17 +220,26 @@ namespace {
             );
             return $translations[$key] ?? $key;
         }
+
+        public function setProjectSetting($key, $value, $projectId = null)
+        {
+            if ($this->module !== null) {
+                $this->module->projectSettings[$key] = $value;
+            }
+        }
     }
 
     class FakeUser
     {
         private $superUser;
         private $rights;
+        private $designRights;
 
-        public function __construct($superUser, $rights)
+        public function __construct($superUser, $rights, $designRights = false)
         {
             $this->superUser = $superUser;
             $this->rights = $rights;
+            $this->designRights = $designRights;
         }
 
         public function isSuperUser()
@@ -221,6 +250,11 @@ namespace {
         public function getRights($projectId)
         {
             return $this->rights;
+        }
+
+        public function hasDesignRights($projectId)
+        {
+            return $this->superUser || $this->designRights;
         }
     }
 
@@ -439,6 +473,7 @@ namespace {
     moduleAssert($customBackgroundUpload['background_image_mode'] === 'custom', 'Upload provenance did not retain the selected custom background image mode.');
     moduleAssert($customBackgroundUpload['background_image_effective_mode'] === 'custom', 'Upload provenance did not retain the applied custom background image mode.');
     moduleAssert($customBackgroundUpload['background_image_sha256'] === hash('sha256', $customBackgroundPng), 'Upload provenance did not retain the custom background image digest.');
+    moduleAssert($customBackgroundUpload['background_image_rotation'] === Renderer::DEFAULT_BACKGROUND_IMAGE_ROTATION, 'Upload provenance did not retain the default custom background image rotation.');
 
     Files::$info[99592] = array('project_id' => 123, 'mime_type' => 'image/png', 'doc_name' => 'invalid.png');
     Files::$attributes[99592] = array('image/png', 'invalid.png', 'not a PNG');
@@ -453,6 +488,74 @@ namespace {
     moduleAssert($invalidBackgroundProfile['requested_mode'] === 'custom' && $invalidBackgroundProfile['mode'] === 'redcap', 'Invalid custom background image did not fall back to the REDCap logo.');
     moduleAssert($invalidBackgroundProfile['sha256'] === null, 'Invalid custom background image retained a digest.');
     moduleAssert($invalidBackgroundModule->logs[0][0] === 'sigwm_error_background_image', 'Invalid custom background image did not create a diagnostic event.');
+
+    $projectSettingsModule = new WatermarkedSignaturesExternalModule();
+    $projectSettingsFramework = new FakeFramework();
+    $projectSettingsFramework->module = $projectSettingsModule;
+    $projectSettingsModule->framework = $projectSettingsFramework;
+    $projectSettingsModule->testUser = new FakeUser(false, array(), true);
+    setPrivateProperty($projectSettingsModule, 'proj', new FakeProject());
+    setPrivateProperty($projectSettingsModule, 'project_id', 123);
+    $initialSettings = $projectSettingsModule->get_project_settings_state(123);
+    moduleAssert($initialSettings['retention_days'] === 90 && $initialSettings['background_image_mode'] === 'redcap', 'Custom project settings did not expose the expected defaults.');
+    moduleAssert($initialSettings['background_image_rotation'] === Renderer::DEFAULT_BACKGROUND_IMAGE_ROTATION, 'Custom project settings did not preserve the default custom-image rotation.');
+
+    $largeBackground = imagecreatetruecolor(1024, 512);
+    $largeBackgroundWhite = imagecolorallocate($largeBackground, 255, 255, 255);
+    $largeBackgroundBlue = imagecolorallocate($largeBackground, 30, 95, 190);
+    imagefilledrectangle($largeBackground, 0, 0, 1023, 511, $largeBackgroundWhite);
+    imagestring($largeBackground, 5, 200, 240, 'NORMALIZED', $largeBackgroundBlue);
+    ob_start();
+    imagepng($largeBackground);
+    $largeBackgroundPng = ob_get_clean();
+    imagedestroy($largeBackground);
+    $temporaryUpload = tempnam(sys_get_temp_dir(), 'sigwm-test-');
+    moduleAssert($temporaryUpload !== false && file_put_contents($temporaryUpload, $largeBackgroundPng) === strlen($largeBackgroundPng), 'Could not prepare a custom background image upload.');
+    try {
+        $savedSettings = $projectSettingsModule->save_project_settings(123, array(
+            'retention_days' => '17',
+            'public_project_reference' => 'SIGWM-TEST',
+            'background_image_mode' => 'custom',
+            'background_image_rotation' => '-30'
+        ), array(
+            'error' => UPLOAD_ERR_OK,
+            'size' => strlen($largeBackgroundPng),
+            'tmp_name' => $temporaryUpload
+        ));
+    } finally {
+        if (is_file($temporaryUpload)) {
+            unlink($temporaryUpload);
+        }
+    }
+    moduleAssert($savedSettings['ok'], 'Custom project settings could not save a normalized custom image.');
+    moduleAssert($projectSettingsModule->projectSettings['unbound-upload-retention-days'] === '17', 'Custom project settings did not persist retention.');
+    moduleAssert($projectSettingsModule->projectSettings['public-project-reference'] === 'SIGWM-TEST', 'Custom project settings did not persist the public project reference.');
+    moduleAssert($projectSettingsModule->projectSettings['background-image-mode'] === 'custom', 'Custom project settings did not persist the selected background mode.');
+    moduleAssert($projectSettingsModule->projectSettings['background-image-rotation'] === '-30', 'Custom project settings did not persist the custom-image rotation.');
+    $savedCustomImage = $savedSettings['state']['custom_image'];
+    moduleAssert($savedCustomImage['available'] && $savedCustomImage['width'] === 512 && $savedCustomImage['height'] === 256, 'Custom project settings did not normalize the stored image to the 512px limit.');
+    moduleAssert(strpos($savedCustomImage['preview_data_url'], 'data:image/png;base64,') === 0, 'Custom project settings did not provide a safe preview data URL.');
+    $savedImageBytes = Files::$attributes[(int) $savedCustomImage['edoc_id']][2];
+    moduleAssert(strlen($savedImageBytes) <= Renderer::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES, 'Custom project settings stored an image above the final size limit.');
+    $savedBackgroundProfile = invokePrivate($projectSettingsModule, 'background_image_profile');
+    moduleAssert($savedBackgroundProfile['mode'] === 'custom' && $savedBackgroundProfile['rotation'] === -30, 'Custom project settings did not apply the saved image rotation to rendering.');
+    $retainedImageEdocId = $projectSettingsModule->projectSettings['custom-background-image'];
+    $redcapSettings = $projectSettingsModule->save_project_settings(123, array(
+        'retention_days' => '17',
+        'public_project_reference' => 'SIGWM-TEST',
+        'background_image_mode' => 'redcap',
+        'background_image_rotation' => '-30'
+    ), null);
+    moduleAssert($redcapSettings['ok'], 'Project settings could not switch back to the REDCap logo.');
+    moduleAssert($projectSettingsModule->projectSettings['custom-background-image'] === $retainedImageEdocId, 'Custom image was not retained while the REDCap-logo mode was selected.');
+    moduleAssert($redcapSettings['state']['custom_image']['available'], 'Retained custom image became unavailable after selecting the REDCap logo.');
+    $missingCustomImage = $projectSettingsModule->save_project_settings(123, array(
+        'retention_days' => '17',
+        'public_project_reference' => 'SIGWM-TEST',
+        'background_image_mode' => 'custom',
+        'background_image_rotation' => '999'
+    ), null);
+    moduleAssert(!$missingCustomImage['ok'] && $missingCustomImage['error_key'] === 'settings_error_background_rotation', 'Custom project settings accepted an invalid rotation.');
 
     moduleAssert(invokePrivate($module, 'unbound_upload_retention_days', array(123)) === 90, 'Unset retention setting did not use the 90-day default.');
     $module->projectSettings['unbound-upload-retention-days'] = '0';
@@ -503,6 +606,7 @@ namespace {
     moduleAssert($participantEnvelope['project_reference'] === 'SIGWM-TEST' && $witnessEnvelope['project_reference'] === 'SIGWM-TEST', 'Configured public project reference was not signed into every field envelope.');
 
     $verificationLink = array('key' => 'signature-verification', 'url' => 'pages/verify-signature.php');
+    $projectSettingsLink = array('key' => 'project-settings', 'url' => 'pages/project-settings.php');
     $linkModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($linkModule, 'proj', new FakeProject());
     setPrivateProperty($linkModule, 'project_id', 123);
@@ -511,11 +615,17 @@ namespace {
         'group_id' => ''
     ));
     moduleAssert($linkModule->redcap_module_link_check_display(123, $verificationLink) === $verificationLink, 'Read-only form user did not receive the verification link.');
+    moduleAssert($linkModule->redcap_module_link_check_display(123, $projectSettingsLink) === null, 'User without design rights received the project settings link.');
     $linkModule->testUser = new FakeUser(false, array(
         'data_entry' => '[consent,128]',
         'group_id' => ''
     ));
     moduleAssert($linkModule->redcap_module_link_check_display(123, $verificationLink) === null, 'User without signature-form access received the verification link.');
+    $linkModule->testUser = new FakeUser(false, array(
+        'data_entry' => '[consent,128]',
+        'group_id' => ''
+    ), true);
+    moduleAssert($linkModule->redcap_module_link_check_display(123, $projectSettingsLink) === $projectSettingsLink, 'Project designer did not receive the project settings link.');
     $administratorVerificationLink = array('key' => 'administrator-signature-verification', 'url' => 'pages/admin-verify-signature.php');
     moduleAssert($linkModule->redcap_module_link_check_display(null, $administratorVerificationLink) === null, 'Non-administrator received the global verification link.');
     $administratorFactoryDenied = false;

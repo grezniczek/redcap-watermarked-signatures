@@ -79,7 +79,8 @@ $verificationPage = array(
         'file_sha256' => $module->framework->tt('ui_label_stored_sha256'), // Stored SHA-256
         'background_image_mode' => $module->framework->tt('ui_label_background_image_mode'), // Selected background image
         'background_image_effective_mode' => $module->framework->tt('ui_label_background_image_effective_mode'), // Applied background image
-        'background_image_sha256' => $module->framework->tt('ui_label_background_image_sha256') // Custom background image SHA-256
+        'background_image_sha256' => $module->framework->tt('ui_label_background_image_sha256'), // Custom background image SHA-256
+        'background_image_rotation' => $module->framework->tt('ui_label_background_image_rotation') // Applied background image rotation
     )
 );
 
