@@ -1,6 +1,7 @@
 /.vscode export-ignore
 /.gitignore export-ignore
 /.gitattributes export-ignore
+/DEV_DOCS/ export-ignore
 /SUPPORT.md export-ignore
 /support/ export-ignore
 /tests/ export-ignore

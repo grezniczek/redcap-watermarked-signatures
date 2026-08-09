@@ -213,13 +213,6 @@ field clear; a failed result should be treated as an integrity issue.
 - Successful bindings, record-rename history, and serious errors are retained.
   Only unbound upload provenance is eligible for scheduled cleanup.
 
-## Technical documentation
-
-Maintainers can find the implementation and verification design in
-[DEV_DOCS/implementation_plan.md](DEV_DOCS/implementation_plan.md),
-[DEV_DOCS/hook_discovery.md](DEV_DOCS/hook_discovery.md), and
-[DEV_DOCS/verification_contract.md](DEV_DOCS/verification_contract.md).
-
 ## Release history
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and notable changes.
