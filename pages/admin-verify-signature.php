@@ -6,7 +6,8 @@ try {
     $controller = $module->get_administrator_verification_controller();
 } catch (Throwable $exception) {
     http_response_code(403);
-    echo '<div class="alert alert-danger m-4">Administrator signature verification is not available for your account.</div>';
+    $unavailableMessage = $module->framework->tt('ui_administrator_verification_unavailable'); // Administrator signature verification is not available for your account.
+    echo '<div class="alert alert-danger m-4">' . htmlspecialchars($unavailableMessage, ENT_QUOTES, 'UTF-8') . '</div>';
     return;
 }
 
@@ -42,40 +43,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $verificationPage = array(
     'is_administrator' => true,
-    'title' => 'Administrator signature verification',
+    'title' => $module->framework->tt('ui_administrator_verification_title'), // Administrator signature verification
     'documentation_url' => $module->getUrl('docs/administrator-guide.md'),
-    'documentation_label' => 'Administrator guide',
-    'documentation_help' => 'Use this Control Center page to investigate a signature across projects, review its integrity checks, and examine authorized technical history.',
+    'documentation_label' => $module->framework->tt('ui_administrator_guide'), // Administrator guide
+    'documentation_help' => $module->framework->tt('ui_administrator_verification_guide_help'), // Use this Control Center page to investigate a signature across projects, review its integrity checks, and examine authorized technical history.
     'capture_reference' => $captureReference,
     'edoc_id' => $edocId,
     'result' => $result,
     'detail_labels' => array(
-        'upload_project_id' => 'Upload project ID',
-        'upload_log_project_id' => 'Upload log project ID',
-        'upload_log_id' => 'Upload log ID',
-        'binding_project_id' => 'Binding project ID',
-        'binding_log_project_id' => 'Binding log project ID',
-        'binding_log_id' => 'Binding log ID',
-        'capture_ref' => 'Capture reference',
-        'context_ref' => 'Context reference',
-        'project_reference' => 'Public project reference',
-        'anchor' => 'Visible anchor',
-        'record_id' => 'Record ID',
-        'event_id' => 'Event ID',
-        'instrument' => 'Instrument',
-        'field' => 'Field',
-        'repeat_type' => 'Repeat type',
-        'repeat_instrument' => 'Repeat instrument',
-        'repeat_instance' => 'Repeat instance',
-        'edoc_id' => 'Edoc ID',
-        'capture_origin' => 'Capture origin',
-        'capture_username' => 'Capture username',
-        'captured_at' => 'Captured at (UTC)',
-        'save_origin' => 'Save origin',
-        'save_username' => 'Save username',
-        'bound_at' => 'Bound at (UTC)',
-        'watermark_version' => 'Watermark version',
-        'file_sha256' => 'Stored SHA-256'
+        'upload_project_id' => $module->framework->tt('ui_label_upload_project_id'), // Upload project ID
+        'upload_log_project_id' => $module->framework->tt('ui_label_upload_log_project_id'), // Upload log project ID
+        'upload_log_id' => $module->framework->tt('ui_label_upload_log_id'), // Upload log ID
+        'binding_project_id' => $module->framework->tt('ui_label_binding_project_id'), // Binding project ID
+        'binding_log_project_id' => $module->framework->tt('ui_label_binding_log_project_id'), // Binding log project ID
+        'binding_log_id' => $module->framework->tt('ui_label_binding_log_id'), // Binding log ID
+        'capture_ref' => $module->framework->tt('ui_label_capture_reference'), // Capture reference
+        'context_ref' => $module->framework->tt('ui_label_context_reference'), // Context reference
+        'project_reference' => $module->framework->tt('ui_label_public_project_reference'), // Public project reference
+        'anchor' => $module->framework->tt('ui_label_visible_anchor'), // Visible anchor
+        'record_id' => $module->framework->tt('ui_label_record_id'), // Record ID
+        'event_id' => $module->framework->tt('ui_label_event_id'), // Event ID
+        'instrument' => $module->framework->tt('ui_label_instrument'), // Instrument
+        'field' => $module->framework->tt('ui_label_field'), // Field
+        'repeat_type' => $module->framework->tt('ui_label_repeat_type'), // Repeat type
+        'repeat_instrument' => $module->framework->tt('ui_label_repeat_instrument'), // Repeat instrument
+        'repeat_instance' => $module->framework->tt('ui_label_repeat_instance'), // Repeat instance
+        'edoc_id' => $module->framework->tt('ui_label_edoc_id'), // Edoc ID
+        'capture_origin' => $module->framework->tt('ui_label_capture_origin'), // Capture origin
+        'capture_username' => $module->framework->tt('ui_label_capture_username'), // Capture username
+        'captured_at' => $module->framework->tt('ui_label_captured_at'), // Captured at (UTC)
+        'save_origin' => $module->framework->tt('ui_label_save_origin'), // Save origin
+        'save_username' => $module->framework->tt('ui_label_save_username'), // Save username
+        'bound_at' => $module->framework->tt('ui_label_bound_at'), // Bound at (UTC)
+        'watermark_version' => $module->framework->tt('ui_label_watermark_version'), // Watermark version
+        'file_sha256' => $module->framework->tt('ui_label_stored_sha256') // Stored SHA-256
     )
 );
 

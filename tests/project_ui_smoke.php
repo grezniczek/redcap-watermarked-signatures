@@ -260,6 +260,34 @@ $english = parse_ini_file(__DIR__ . '/../lang/English.ini');
 projectUiAssert(is_array($english), 'English language file is invalid.');
 projectUiAssert(($english['ui_project_verification_title'] ?? null) === 'Verify watermarked signature', 'Project verification title translation is missing.');
 projectUiAssert(($english['ui_documentation_prompt'] ?? null) === 'To learn more, check out the {documentation_link}.', 'Documentation prompt translation is missing.');
+$translatedConfigurationKeys = array(
+    $config['tt_name'] ?? null,
+    $config['tt_description'] ?? null,
+    $config['documentation'] ?? null,
+    $config['links']['control-center'][0]['tt_name'] ?? null,
+    $config['links']['project'][0]['tt_name'] ?? null,
+    $config['action-tags'][0]['description'] ?? null,
+    $config['project-settings'][0]['tt_name'] ?? null,
+    $config['project-settings'][1]['tt_name'] ?? null,
+    $config['project-settings'][2]['name'] ?? null,
+    $config['crons'][0]['tt_cron_description'] ?? null
+);
+foreach ($translatedConfigurationKeys as $translationKey) {
+    projectUiAssert(is_string($translationKey) && array_key_exists($translationKey, $english), 'A translated configuration field has no English language entry.');
+}
+$localizationSources = array(
+    __DIR__ . '/../WatermarkedSignaturesExternalModule.php',
+    __DIR__ . '/../pages/verify-signature.php',
+    __DIR__ . '/../pages/admin-verify-signature.php',
+    __DIR__ . '/../pages/partials/verification-page.php'
+);
+foreach ($localizationSources as $sourcePath) {
+    $source = file_get_contents($sourcePath);
+    preg_match_all('/(?:\\$module|\\$this)->framework->tt\\(\\s*[\'\"]([a-z0-9_]+)[\'\"]/', $source, $matches);
+    foreach ($matches[1] as $translationKey) {
+        projectUiAssert(array_key_exists($translationKey, $english), 'A framework translation lookup has no English language entry: ' . $translationKey);
+    }
+}
 
 $entrySource = file_get_contents(__DIR__ . '/../pages/verify-signature.php');
 $pageSource = file_get_contents(__DIR__ . '/../pages/partials/verification-page.php');

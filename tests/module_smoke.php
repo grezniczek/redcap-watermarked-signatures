@@ -172,6 +172,14 @@ namespace {
         {
             return '/modules/watermarked_signatures/' . $file;
         }
+
+        public function tt($key)
+        {
+            $translations = array(
+                'ui_upload_watermark_failed' => 'The signature could not be securely watermarked. Please reopen the signature dialog and try again.'
+            );
+            return $translations[$key] ?? $key;
+        }
     }
 
     class FakeUser
@@ -816,6 +824,7 @@ namespace {
     moduleAssert($replacementEdocs === array(99002, 99003, 99004), 'A later replacement did not preserve old bindings and bind the new edoc.');
 
     $invalidOriginModule = new WatermarkedSignaturesExternalModule();
+    $invalidOriginModule->framework = new FakeFramework();
     setPrivateProperty($invalidOriginModule, 'proj', new FakeProject());
     setPrivateProperty($invalidOriginModule, 'project_id', 123);
     $invalidOriginPayload = $payload;
@@ -833,6 +842,7 @@ namespace {
     moduleAssert($invalidOriginModule->logs[0][0] === 'sigwm_error_invalid_envelope', 'Invalid capture origin did not produce an envelope error.');
 
     $scopeMismatchModule = new WatermarkedSignaturesExternalModule();
+    $scopeMismatchModule->framework = new FakeFramework();
     setPrivateProperty($scopeMismatchModule, 'proj', new FakeProject());
     setPrivateProperty($scopeMismatchModule, 'project_id', 123);
     $_GET = array('event_id' => '418', 'instance' => '1');
@@ -848,6 +858,7 @@ namespace {
     moduleAssert($scopeMismatchModule->exitRequested, 'An envelope from another request event was accepted.');
 
     $failedModule = new WatermarkedSignaturesExternalModule();
+    $failedModule->framework = new FakeFramework();
     setPrivateProperty($failedModule, 'proj', new FakeProject());
     setPrivateProperty($failedModule, 'project_id', 123);
     $_GET = array('event_id' => '417', 'instance' => '3');

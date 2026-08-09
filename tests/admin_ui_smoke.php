@@ -179,7 +179,7 @@ $pageSource = file_get_contents(__DIR__ . '/../pages/partials/verification-page.
 adminUiAssert(strpos($entrySource, "'is_administrator' => true") !== false, 'Administrator verification entry point does not declare administrator scope.');
 adminUiAssert(strpos($entrySource, "require __DIR__ . '/partials/verification-page.php'") !== false, 'Administrator verification entry point does not use the shared page partial.');
 adminUiAssert(strpos($entrySource, "'documentation_url' => \$module->getUrl('docs/administrator-guide.md')") !== false, 'Administrator verification entry point does not link its administrator guide.');
-adminUiAssert(strpos($entrySource, "'documentation_help' => 'Use this Control Center page to investigate a signature across projects") !== false, 'Administrator verification entry point does not provide documentation help text.');
+adminUiAssert(strpos($entrySource, "\$module->framework->tt('ui_administrator_verification_guide_help')") !== false, 'Administrator verification entry point does not retrieve documentation help text from the language file.');
 adminUiAssert(strpos($pageSource, 'method="post"') !== false, 'Administrator verification form does not use POST.');
 adminUiAssert(strpos($pageSource, 'id="sigwm-verification-documentation"') !== false, 'Administrator verification page does not render its documentation link.');
 adminUiAssert(strpos($pageSource, "\$module->framework->tt('ui_documentation_prompt')") !== false, 'Administrator verification page does not retrieve its documentation prompt through the framework.');
@@ -193,10 +193,10 @@ adminUiAssert(strpos($pageSource, 'id="sigwm-verification-result"') !== false, '
 adminUiAssert(strpos($pageSource, "captureReference.addEventListener('search'") !== false, 'Administrator search clear handler is missing.');
 adminUiAssert(strpos($pageSource, "edocId.addEventListener('search'") !== false, 'Administrator edoc search clear handler is missing.');
 adminUiAssert(strpos($pageSource, "result.remove()") !== false, 'Administrator search clear handler does not clear the result.');
-adminUiAssert(strpos($pageSource, 'Technical log history') !== false, 'Administrator technical history is not rendered.');
+adminUiAssert(strpos($pageSource, "\$module->framework->tt('ui_heading_technical_log_history')") !== false, 'Administrator technical history is not translated.');
 adminUiAssert(strpos($pageSource, 'JSON_PRETTY_PRINT') !== false, 'Administrator diagnostic details are not pretty-printed.');
-adminUiAssert(strpos($pageSource, '>Log event</th>') !== false, 'Administrator diagnostic event row is missing.');
+adminUiAssert(strpos($pageSource, "\$module->framework->tt('ui_label_log_event')") !== false, 'Administrator diagnostic event row is not translated.');
 adminUiAssert(strpos($pageSource, 'border-top: 1px solid #444') !== false, 'Administrator diagnostic entries are not visibly separated.');
-adminUiAssert(strpos($pageSource, 'Go to field') !== false, 'Administrator details do not include a field-navigation link.');
+adminUiAssert(strpos($pageSource, "\$module->framework->tt('ui_link_go_to_field')") !== false, 'Administrator details do not include a translated field-navigation link.');
 
 echo "Watermarked Signatures administrator UI smoke tests passed.\n";

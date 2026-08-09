@@ -1,7 +1,9 @@
 {
     "name": "Watermarked Signatures",
+    "tt_name": "config_module_name",
     "namespace": "DE\\RUB\\WatermarkedSignaturesExternalModule",
     "description": "A REDCap external module that adds watermarks to signatures.",
+    "tt_description": "config_module_description",
     "documentation": "config_readme",
     "tt_documentation": true,
     "authors": [
@@ -19,6 +21,7 @@
         "control-center": [
             {
                 "name": "Administrator signature verification",
+                "tt_name": "config_administrator_verification_link",
                 "key": "administrator-signature-verification",
                 "icon": "fa-solid fa-shield-halved",
                 "url": "pages/admin-verify-signature.php",
@@ -28,6 +31,7 @@
         "project": [
             {
                 "name": "Verify watermarked signature",
+                "tt_name": "config_project_verification_link",
                 "key": "signature-verification",
                 "icon": "fa-solid fa-shield-halved",
                 "url": "pages/verify-signature.php",
@@ -48,12 +52,14 @@
         {
             "key": "unbound-upload-retention-days",
             "name": "Retain unbound signature-upload provenance for this many days (0 disables automatic purging)",
+            "tt_name": "config_unbound_upload_retention_days",
             "type": "text",
             "default": "90"
         },
         {
             "key": "public-project-reference",
             "name": "Public project reference printed as REF: on every new watermarked signature (optional; 1–30 ASCII letters, digits, spaces, dots, hyphens, underscores, or slashes). This is visible on exported images and should not reveal sensitive project information.",
+            "tt_name": "config_public_project_reference",
             "type": "text"
         },
         {
@@ -67,6 +73,7 @@
         {
             "cron_name": "purge-unbound-signature-uploads",
             "cron_description": "Purge expired, unbound signature upload provenance",
+            "tt_cron_description": "config_cron_purge_unbound_uploads",
             "method": "cron_purge_unbound_upload_provenance",
             "cron_frequency": 86400,
             "cron_max_run_time": 300

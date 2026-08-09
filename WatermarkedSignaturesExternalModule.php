@@ -902,7 +902,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             error_log("Watermarked Signatures error logging failed: " . $exception->getMessage());
         }
 
-        $message = "The signature could not be securely watermarked. Please reopen the signature dialog and try again.";
+        $message = $this->framework->tt('ui_upload_watermark_failed'); // The signature could not be securely watermarked. Please reopen the signature dialog and try again.
         $fieldJson = json_encode($field);
         $messageJson = json_encode($message);
         $instance = isset($_GET["instance"]) && is_numeric($_GET["instance"]) && (int) $_GET["instance"] > 0
@@ -1008,7 +1008,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
     private function require_proj()
     {
         if ($this->proj == null) {
-            throw new Exception($this->tt("error_project_not_initialized"));
+            throw new Exception($this->framework->tt('error_project_not_initialized')); // Project is not initialized.
         }
     }
 
