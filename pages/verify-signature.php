@@ -9,7 +9,8 @@ try {
     $controller = $module->get_project_verification_controller((int) PROJECT_ID);
 } catch (Throwable $exception) {
     http_response_code(403);
-    echo '<div class="alert alert-danger m-4">Signature verification is not available for your account in this project.</div>';
+    $unavailableMessage = $module->framework->tt('ui_project_verification_unavailable'); // Signature verification is not available for your account in this project.
+    echo '<div class="alert alert-danger m-4">' . htmlspecialchars($unavailableMessage, ENT_QUOTES, 'UTF-8') . '</div>';
     return;
 }
 
@@ -24,10 +25,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $verificationPage = array(
     'is_administrator' => false,
-    'title' => 'Verify watermarked signature',
+    'title' => $module->framework->tt('ui_project_verification_title'), // Verify watermarked signature
     'documentation_url' => $module->getUrl('docs/project-user-guide.md'),
-    'documentation_label' => 'Project user guide',
-    'documentation_help' => 'Use this page to confirm whether a watermarked signature is valid, still current in its field, or requires follow-up.',
+    'documentation_label' => $module->framework->tt('ui_project_user_guide'), // Project user guide
+    'documentation_help' => $module->framework->tt('ui_project_verification_guide_help'), // Use this page to confirm whether a watermarked signature is valid, still current in its field, or requires follow-up.
     'capture_reference' => $captureReference,
     'result' => $result,
     'detail_labels' => array(

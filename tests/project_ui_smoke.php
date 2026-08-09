@@ -256,16 +256,22 @@ projectUiAssert(count($projectLinks) === 1 && $projectLinks[0]['key'] === 'signa
 projectUiAssert(!array_key_exists('documentation', $projectLinks[0]), 'Project link contains an unsupported documentation configuration key.');
 projectUiAssert($projectLinks[0]['show-header-and-footer'] === true, 'Project verification page does not request the REDCap layout.');
 projectUiAssert(is_file(__DIR__ . '/../docs/project-user-guide.md'), 'Project verification documentation file is missing.');
+$english = parse_ini_file(__DIR__ . '/../lang/English.ini');
+projectUiAssert(is_array($english), 'English language file is invalid.');
+projectUiAssert(($english['ui_project_verification_title'] ?? null) === 'Verify watermarked signature', 'Project verification title translation is missing.');
+projectUiAssert(($english['ui_documentation_prompt'] ?? null) === 'To learn more, check out the {documentation_link}.', 'Documentation prompt translation is missing.');
 
 $entrySource = file_get_contents(__DIR__ . '/../pages/verify-signature.php');
 $pageSource = file_get_contents(__DIR__ . '/../pages/partials/verification-page.php');
 projectUiAssert(strpos($entrySource, "'is_administrator' => false") !== false, 'Project verification entry point does not declare project scope.');
 projectUiAssert(strpos($entrySource, "require __DIR__ . '/partials/verification-page.php'") !== false, 'Project verification entry point does not use the shared page partial.');
 projectUiAssert(strpos($entrySource, "'documentation_url' => \$module->getUrl('docs/project-user-guide.md')") !== false, 'Project verification entry point does not link its user guide.');
-projectUiAssert(strpos($entrySource, "'documentation_help' => 'Use this page to confirm whether a watermarked signature is valid") !== false, 'Project verification entry point does not provide documentation help text.');
+projectUiAssert(strpos($entrySource, "\$module->framework->tt('ui_project_verification_guide_help')") !== false, 'Project verification entry point does not retrieve documentation help text from the language file.');
 projectUiAssert(strpos($pageSource, 'method="post"') !== false, 'Verification form does not use POST.');
 projectUiAssert(strpos($pageSource, 'id="sigwm-verification-documentation"') !== false, 'Verification page does not render its documentation link.');
-projectUiAssert(strpos($pageSource, 'To learn more, check out the') !== false, 'Verification page does not frame its documentation link with help text.');
+projectUiAssert(strpos($pageSource, "\$module->framework->tt('ui_documentation_prompt')") !== false, 'Verification page does not retrieve its documentation prompt through the framework.');
+projectUiAssert(strpos($pageSource, '\\ExternalModules\\ExternalModules::interpolateLanguageString(') !== false, 'Verification page does not use the raw HTML interpolation workaround.');
+projectUiAssert(strpos($pageSource, "array('documentation_link' => \$documentationLink)") !== false, 'Verification page does not provide the documentation-link placeholder.');
 projectUiAssert(strpos($pageSource, 'redcap_csrf_token') !== false, 'Verification form is missing the REDCap CSRF token.');
 projectUiAssert(strpos($pageSource, 'type="search"') !== false, 'Verification input is not a search control.');
 projectUiAssert(strpos($pageSource, '<span class="input-group-text">S:</span>') !== false, 'Verification input does not show the printed S: prefix.');

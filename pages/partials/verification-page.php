@@ -77,7 +77,16 @@ $diagnosticSummaryLabels = array(
         <?php if (is_string($documentationHelp) && $documentationHelp !== ''): ?>
             <p class="mb-1"><?= $escape($documentationHelp) ?></p>
         <?php endif; ?>
-        <p class="mb-3">To learn more, check out the <a id="sigwm-verification-documentation" href="<?= $escape($documentationUrl) ?>" target="_blank" rel="noopener"><i class="fa-solid fa-book-open me-1"></i><?= $escape($documentationLabel) ?></a>.</p>
+        <?php
+        $documentationLink = '<a id="sigwm-verification-documentation" href="' . $escape($documentationUrl) . '" target="_blank" rel="noopener"><i class="fa-solid fa-book-open me-1"></i>' . $escape($documentationLabel) . '</a>';
+        $documentationPromptTemplate = $module->framework->tt('ui_documentation_prompt'); // To learn more, check out the {documentation_link}.
+        $documentationPrompt = \ExternalModules\ExternalModules::interpolateLanguageString(
+            $documentationPromptTemplate,
+            array('documentation_link' => $documentationLink),
+            false
+        );
+        ?>
+        <p class="mb-3"><?= $documentationPrompt ?></p>
     <?php endif; ?>
 
     <form method="post" class="card card-body p-3 mb-3" autocomplete="off">

@@ -182,7 +182,8 @@ adminUiAssert(strpos($entrySource, "'documentation_url' => \$module->getUrl('doc
 adminUiAssert(strpos($entrySource, "'documentation_help' => 'Use this Control Center page to investigate a signature across projects") !== false, 'Administrator verification entry point does not provide documentation help text.');
 adminUiAssert(strpos($pageSource, 'method="post"') !== false, 'Administrator verification form does not use POST.');
 adminUiAssert(strpos($pageSource, 'id="sigwm-verification-documentation"') !== false, 'Administrator verification page does not render its documentation link.');
-adminUiAssert(strpos($pageSource, 'To learn more, check out the') !== false, 'Administrator verification page does not frame its documentation link with help text.');
+adminUiAssert(strpos($pageSource, "\$module->framework->tt('ui_documentation_prompt')") !== false, 'Administrator verification page does not retrieve its documentation prompt through the framework.');
+adminUiAssert(strpos($pageSource, '\\ExternalModules\\ExternalModules::interpolateLanguageString(') !== false, 'Administrator verification page does not use the raw HTML interpolation workaround.');
 adminUiAssert(strpos($pageSource, 'redcap_csrf_token') !== false, 'Administrator verification form is missing the REDCap CSRF token.');
 adminUiAssert(strpos($pageSource, 'type="search"') !== false, 'Administrator verification input is not a search control.');
 adminUiAssert(strpos($pageSource, 'name="edoc_id"') !== false, 'Administrator edoc lookup input is missing.');
