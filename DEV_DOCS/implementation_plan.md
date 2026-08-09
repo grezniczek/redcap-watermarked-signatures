@@ -813,6 +813,8 @@ sigwm_error_missing_provenance
 sigwm_error_edoc_already_bound
 sigwm_error_capture_edoc_conflict
 sigwm_error_upload_render
+sigwm_error_upload_provenance_response
+sigwm_error_upload_provenance_logging
 sigwm_error_binding_mac
 sigwm_error_file_digest
 ```
@@ -1476,8 +1478,11 @@ follows:
    and records provenance only after the resulting edoc ID is available.
 5. **Upload-provenance robustness:** failure to verify an envelope or render a
    watermark is fail-closed through the External Module hook exit mechanism.
-   An upload that succeeds but is never persisted in a field remains auditable
-   as unbound provenance and is eligible for retention cleanup.
+   If a successful REDCap upload response cannot be parsed, or the primary
+   provenance write fails, the module records a best-effort, non-secret
+   technical diagnostic. An upload that succeeds but is never persisted in a
+   field remains auditable as unbound provenance and is eligible for retention
+   cleanup.
 6. **One-time binding concurrency:** a MySQL/MariaDB named lock scoped to the
    globally unique edoc ID protects binding creation. The lock operations and
    binding lookup use the primary database connection to avoid read-replica

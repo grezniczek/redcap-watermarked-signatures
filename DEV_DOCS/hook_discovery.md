@@ -42,6 +42,15 @@ JavaScript response. The module starts a request-scoped output buffer after
 watermarking and parses that trusted server-generated response. Once the edoc ID
 is present, it appends a `sigwm_upload` provenance event.
 
+If REDCap reports a successful upload but the expected field/edoc response
+shape cannot be recognized, the module leaves REDCap's response untouched and
+appends a best-effort `sigwm_error_upload_provenance_response` diagnostic. If
+the `sigwm_upload` write itself fails, it similarly attempts a
+`sigwm_error_upload_provenance_logging` diagnostic containing safe capture
+context and the technical error; an application-log entry remains the final
+fallback if the EM log is unavailable. These diagnostics deliberately exclude
+the envelope nonce and image bytes.
+
 The EM framework itself buffers hook output and closes the topmost buffer as
 soon as the hook returns. The module places an inert guard buffer above its
 response-capture buffer; the framework consumes the guard, leaving the capture
@@ -106,9 +115,11 @@ directly inspectable on the authoritative binding entry. The anchor is included
 in the binding MAC alongside the scope values from which it is derived.
 
 REDCap may route ordinary `SELECT` statements to a read replica. The lock
-acquire/release and protected binding lookup therefore force the primary
-database connection. The EM framework still expands the log pseudo-query before
-it is executed. This prevents replica lag from allowing a duplicate binding.
+acquire/release, protected binding lookup, and record-binding lookups that
+immediately follow a rename therefore force the primary database connection.
+The EM framework still expands the log pseudo-query before it is executed. This
+prevents replica lag from allowing a duplicate binding or suppressing a
+completed rename's audit event.
 
 ## Multi-field and signature lifecycle behavior
 

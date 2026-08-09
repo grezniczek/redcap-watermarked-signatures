@@ -97,7 +97,10 @@ class LogRepository
      */
     public function findBoundRecordId($recordId)
     {
-        $result = $this->module->queryLogs(
+        // This lookup immediately follows a REDCap record rename in two
+        // supported paths. Route it to the primary so replica lag cannot make
+        // a completed rename look absent and suppress its audit event.
+        $result = $this->queryLogsPrimary(
             'select record where message = ? and record = ? order by log_id asc limit 1',
             array('sigwm_bind', (string) $recordId)
         );

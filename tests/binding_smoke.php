@@ -108,6 +108,18 @@ class BindingTestModule
     public function queryLogs($sql, $parameters)
     {
         $this->lastLogQuery = $sql;
+        if (strpos($sql, 'record = ?') !== false) {
+            list($message, $record) = $parameters;
+            foreach ($this->events as $event) {
+                if ($event['message'] === $message && (string) ($event['parameters']['record'] ?? '') === (string) $record) {
+                    return new BindingTestResult(array(
+                        'log_id' => $event['log_id'],
+                        'record' => $event['parameters']['record']
+                    ));
+                }
+            }
+            return new BindingTestResult(null);
+        }
         list($message, $edocId) = $parameters;
         foreach ($this->events as $event) {
             if ($event['message'] === $message && (int) $event['edoc_id'] === (int) $edocId) {
@@ -236,6 +248,9 @@ bindingAssert(end($module->events)['message'] === 'sigwm_error_binding_mac', 'In
 bindingAssert($module->releaseCount === 5, 'A binding lock was not released.');
 bindingAssert($GLOBALS['bindingPrimaryQueryCount'] > 0, 'Primary database query path was not exercised.');
 bindingAssert($GLOBALS['bindingPrimaryLogQueryCount'] > 0, 'Binding lookup did not use the primary database path.');
+$primaryLogQueriesBeforeRenameLookup = $GLOBALS['bindingPrimaryLogQueryCount'];
+bindingAssert($repository->findBoundRecordId('R-001') === 'R-001', 'Bound record lookup did not return the current record ID.');
+bindingAssert($GLOBALS['bindingPrimaryLogQueryCount'] === $primaryLogQueriesBeforeRenameLookup + 1, 'Bound record lookup did not use the primary database path.');
 
 $mismatchModule = new BindingTestModule();
 $GLOBALS['bindingPrimaryModule'] = $mismatchModule;

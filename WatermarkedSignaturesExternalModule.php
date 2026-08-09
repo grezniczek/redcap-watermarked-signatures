@@ -799,18 +799,32 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
     {
         $module = $this;
         $recorded = false;
+        $responseFailureLogged = false;
         $fieldPattern = preg_quote($field, '/');
 
-        ob_start(function ($output) use ($module, &$recorded, $fieldPattern, $provenance) {
+        ob_start(function ($output) use ($module, &$recorded, &$responseFailureLogged, $fieldPattern, $provenance) {
             if (!$recorded && preg_match(
-                "/stopUpload\\(\\s*1\\s*,\\s*'{$fieldPattern}'\\s*,\\s*'([0-9]+)'/",
+                "/stopUpload\\(\\s*1\\s*,\\s*(['\"])${fieldPattern}\\1\\s*,\\s*(['\"])([1-9][0-9]*)\\2/",
                 $output,
                 $matches
             )) {
                 $recorded = true;
                 $event = $provenance;
-                $event["edoc_id"] = (int) $matches[1];
+                $event["edoc_id"] = (int) $matches[3];
                 $module->append_upload_provenance($event);
+            } elseif (!$recorded && !$responseFailureLogged
+                && preg_match('/stopUpload\\(\\s*1\\b/', $output)) {
+                // We know REDCap reported an upload success, but did not
+                // recognize a trusted edoc ID for this field. Without an
+                // upload event, save-time binding will (correctly) refuse to
+                // treat the edoc as module-managed, so retain a durable clue
+                // for administrators instead of silently losing provenance.
+                $responseFailureLogged = true;
+                $module->log_upload_provenance_failure(
+                    'sigwm_error_upload_provenance_response',
+                    $provenance,
+                    'REDCap reported a successful signature upload, but its edoc ID response could not be parsed.'
+                );
             }
             return $output;
         });
@@ -840,9 +854,40 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                 "watermark_version" => $event["watermark_version"],
                 "payload_json" => CanonicalJson::encode($event)
             ));
+            return true;
         } catch (Throwable $exception) {
             error_log("Watermarked Signatures provenance logging failed: " . $exception->getMessage());
+            // The primary provenance row could not be written after REDCap
+            // created the edoc. Make a second, smaller best-effort log entry
+            // that lets an administrator identify the affected capture and
+            // investigate/recover it. safe_log_event() preserves error_log as
+            // a final fallback if the log table itself remains unavailable.
+            $this->log_upload_provenance_failure(
+                'sigwm_error_upload_provenance_logging',
+                $event,
+                'REDCap created a signature edoc, but its upload provenance could not be logged: ' . $exception->getMessage()
+            );
+            return false;
         }
+    }
+
+    /**
+     * Record enough non-secret context to investigate a provenance failure.
+     * This deliberately excludes the signed-envelope nonce and image bytes.
+     */
+    private function log_upload_provenance_failure($eventType, $provenance, $technicalMessage)
+    {
+        $parameters = array(
+            'capture_ref' => is_array($provenance) ? ($provenance['capture_ref'] ?? '') : '',
+            'context_ref' => is_array($provenance) ? ($provenance['context_ref'] ?? '') : '',
+            'anchor' => is_array($provenance) ? ($provenance['anchor'] ?? '') : '',
+            'event_id' => is_array($provenance) ? ($provenance['event_id'] ?? '') : '',
+            'instrument' => is_array($provenance) ? ($provenance['instrument'] ?? '') : '',
+            'field' => is_array($provenance) ? ($provenance['field'] ?? '') : '',
+            'edoc_id' => is_array($provenance) ? ($provenance['edoc_id'] ?? '') : '',
+            'technical_message' => substr((string) $technicalMessage, 0, 1000)
+        );
+        $this->safe_log_event($eventType, $parameters);
     }
 
     private function fail_upload($field, $eventType, $technicalMessage)

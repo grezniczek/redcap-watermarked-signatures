@@ -18,6 +18,7 @@ namespace ExternalModules {
         public $exitRequested = false;
         public $testUser;
         public $projectSettings = array();
+        public $failUploadProvenanceLog = false;
 
         public function getProjectSetting($key, $projectId = null)
         {
@@ -26,6 +27,9 @@ namespace ExternalModules {
 
         public function log($message, $parameters = array())
         {
+            if ($message === 'sigwm_upload' && $this->failUploadProvenanceLog) {
+                throw new \RuntimeException('Simulated upload provenance log failure.');
+            }
             $this->logs[] = array($message, $parameters);
             return count($this->logs);
         }
@@ -589,6 +593,55 @@ namespace {
     moduleAssert($uploadProvenance['capture_origin'] === 'data_entry', 'Upload provenance did not retain the data-entry origin.');
     moduleAssert($uploadProvenance['capture_username'] === 'data-entry-user', 'Upload provenance did not retain the current username.');
     moduleAssert($uploadProvenance['project_reference'] === 'SIGWM-TEST', 'Upload provenance did not retain the public project reference snapshot.');
+
+    $responseFailureModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($responseFailureModule, 'proj', new FakeProject());
+    setPrivateProperty($responseFailureModule, 'project_id', 123);
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_GET = array('event_id' => '417', 'instance' => '1', 'page' => 'consent');
+    $_POST = array(
+        'field_name' => 'participant_signature-linknew',
+        'sigwm_envelope' => $signer->sign($payload),
+        'myfile_base64' => base64_encode($originalPng)
+    );
+    ob_start();
+    ob_start();
+    invokePrivate($responseFailureModule, 'intercept_signature_upload');
+    echo ob_get_clean();
+    // A success response with an altered edoc-ID shape must leave a durable
+    // diagnostic instead of silently losing this capture's provenance.
+    echo '<script>window.parent.window.stopUpload(1,"participant_signature",98138,"signature.png","",417,"","","",1,true);</script>';
+    ob_end_flush();
+    ob_end_flush();
+    ob_get_clean();
+    moduleAssert(count($responseFailureModule->logs) === 1, 'An unparseable successful upload response did not produce a diagnostic log entry.');
+    moduleAssert($responseFailureModule->logs[0][0] === 'sigwm_error_upload_provenance_response', 'An unparseable successful upload response used the wrong diagnostic event.');
+    moduleAssert($responseFailureModule->logs[0][1]['capture_ref'] !== '', 'The response-parse diagnostic did not retain the capture reference.');
+    moduleAssert($responseFailureModule->logs[0][1]['edoc_id'] === '', 'The response-parse diagnostic incorrectly claimed an edoc ID.');
+
+    $loggingFailureModule = new WatermarkedSignaturesExternalModule();
+    $loggingFailureModule->failUploadProvenanceLog = true;
+    setPrivateProperty($loggingFailureModule, 'proj', new FakeProject());
+    setPrivateProperty($loggingFailureModule, 'project_id', 123);
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_GET = array('event_id' => '417', 'instance' => '1', 'page' => 'consent');
+    $_POST = array(
+        'field_name' => 'participant_signature-linknew',
+        'sigwm_envelope' => $signer->sign($payload),
+        'myfile_base64' => base64_encode($originalPng)
+    );
+    ob_start();
+    ob_start();
+    invokePrivate($loggingFailureModule, 'intercept_signature_upload');
+    echo ob_get_clean();
+    echo "<script>window.parent.window.stopUpload(1,'participant_signature','98139','signature.png','',417,'','','',1,true);</script>";
+    ob_end_flush();
+    ob_end_flush();
+    ob_get_clean();
+    moduleAssert(count($loggingFailureModule->logs) === 1, 'A failed provenance write did not produce a durable diagnostic log entry.');
+    moduleAssert($loggingFailureModule->logs[0][0] === 'sigwm_error_upload_provenance_logging', 'A failed provenance write used the wrong diagnostic event.');
+    moduleAssert($loggingFailureModule->logs[0][1]['edoc_id'] === 98139, 'The provenance-write diagnostic did not retain the edoc ID.');
+    moduleAssert(strpos($loggingFailureModule->logs[0][1]['technical_message'], 'could not be logged') !== false, 'The provenance-write diagnostic was not actionable.');
 
     REDCap::$data = array(
         'R-001' => array(417 => array('participant_signature' => '98137'))
