@@ -389,8 +389,13 @@ projectUiAssert(strpos($settingsPageSource, '$_POST[$field]') !== false, 'Projec
 projectUiAssert(strpos($settingsPageSource, 'initializeJavascriptModuleObject') !== false, 'Project settings page does not initialize the framework JavaScript module object.');
 projectUiAssert(strpos($settingsPageSource, 'tt_transferToJavascriptModuleObject') !== false, 'Project settings page does not transfer validation language strings to JavaScript.');
 projectUiAssert(strpos($settingsScriptSource, 'FileReader') !== false, 'Project settings preview does not load replacement images locally.');
-projectUiAssert(strpos($settingsScriptSource, 'fittedScale') !== false, 'Project settings preview does not scale rotated images to fit the preview area.');
-projectUiAssert(strpos($settingsScriptSource, "rotate(' + rotation.value + 'deg) scale('") !== false, 'Project settings preview does not reflect the configured rotation.');
+projectUiAssert(strpos($settingsPageSource, 'id="sigwm-watermark-preview" width="460" height="158"') !== false, 'Project settings page does not provide the 460px WM1 preview canvas.');
+projectUiAssert(strpos($settingsScriptSource, 'previewSignatureHeight = 120') !== false, 'Project settings preview does not model the signature-canvas height.');
+projectUiAssert(strpos($settingsScriptSource, 'previewFooterHeight = 38') !== false, 'Project settings preview does not model the WM1 footer height.');
+projectUiAssert(strpos($settingsScriptSource, 'drawBackgroundPattern') !== false, 'Project settings preview does not render the repeating background pattern.');
+projectUiAssert(strpos($settingsScriptSource, 'drawIdentifierOverlay') !== false, 'Project settings preview does not render the identifier overlay.');
+projectUiAssert(strpos($settingsScriptSource, "'WM1 S:5622-9F1F-AHCA-K") !== false, 'Project settings preview does not render WM1 footer identifiers.');
+projectUiAssert(strpos($settingsScriptSource, 'redcapLogoUrl') !== false, 'Project settings preview does not render the REDCap-logo background.');
 projectUiAssert(strpos($settingsScriptSource, 'module.ajax(config.validationAction, payload)') !== false, 'Project settings changes are not validated through the framework AJAX API.');
 projectUiAssert(strpos($settingsScriptSource, 'ConsoleDebugLogger') !== false, 'Project settings script does not honor the browser-debug setting.');
 projectUiAssert(strpos($settingsScriptSource, "window.addEventListener('beforeunload'") !== false, 'Project settings page does not guard against losing unsaved changes.');

@@ -87,6 +87,9 @@ $customImage = $settings['custom_image'];
 $previewUrl = $customImage['preview_data_url'];
 $javascriptDebugSetting = $module->getProjectSetting('javascript-debug');
 $javascriptDebug = in_array($javascriptDebugSetting, array(true, 1, '1', 'true'), true);
+$redcapLogoUrl = defined('APP_PATH_WEBROOT')
+    ? rtrim((string) APP_PATH_WEBROOT, '/') . '/Resources/images/redcap-logo.png'
+    : null;
 $clientConfig = array(
     'savedValues' => array(
         'retention_days' => (string) $settings['retention_days'],
@@ -96,7 +99,8 @@ $clientConfig = array(
     ),
     'validationAction' => \DE\RUB\WatermarkedSignaturesExternalModule\WatermarkedSignaturesExternalModule::AJAX_VALIDATE_PROJECT_SETTINGS,
     'maxCustomBackgroundImageUploadBytes' => \DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer::MAX_CUSTOM_BACKGROUND_IMAGE_UPLOAD_BYTES,
-    'debug' => $javascriptDebug
+    'debug' => $javascriptDebug,
+    'redcapLogoUrl' => $redcapLogoUrl
 );
 $module->framework->initializeJavascriptModuleObject();
 $module->framework->tt_transferToJavascriptModuleObject(array(
@@ -128,9 +132,9 @@ $module->framework->tt_transferToJavascriptModuleObject(array(
     .sigwm-settings .form-check { min-height: 1.15rem; margin-bottom: .2rem; font-size: .8125rem; }
     .sigwm-settings .form-range { height: .8rem; }
     .sigwm-settings .invalid-feedback { margin-top: .2rem; font-size: .75rem; }
-    .sigwm-settings-preview { height: 154px; min-height: 154px; overflow: hidden; background: #f5f7f8; }
-    .sigwm-settings-preview img { display: block; max-width: 280px; max-height: 136px; object-fit: contain; transform-origin: center; transition: transform .12s ease-out; }
-    .sigwm-settings-preview p { max-width: 280px; font-size: .8125rem; }
+    .sigwm-settings-preview { overflow: hidden; background: #f5f7f8; }
+    .sigwm-settings-preview canvas { display: block; width: 100%; max-width: 460px; height: auto; background: #fff; }
+    .sigwm-settings-preview p { max-width: 460px; font-size: .75rem; }
     .sigwm-settings-current-image { overflow-wrap: anywhere; font-size: .75rem; line-height: 1.25; }
     .sigwm-settings-actions { border-top: 1px solid #dee2e6; }
     .sigwm-settings-actions [hidden] { display: none !important; }
@@ -209,11 +213,11 @@ $module->framework->tt_transferToJavascriptModuleObject(array(
             <div class="col-lg-6">
                 <section class="h-100">
                     <h2 class="sigwm-settings-preview-heading"><?= $escape($module->framework->tt('settings_preview_heading')) /* Preview */ ?></h2>
-                    <div id="sigwm-custom-image-preview-area" class="sigwm-settings-preview border rounded d-flex align-items-center justify-content-center p-2">
-                        <img id="sigwm-custom-image-preview" src="<?= $escape($previewUrl ?? '') ?>" alt="<?= $escape($module->framework->tt('settings_preview_heading')) /* Preview */ ?>"<?= $previewUrl === null ? ' hidden' : '' ?>>
-                        <p id="sigwm-custom-image-preview-empty" class="text-muted text-center mb-0"<?= $previewUrl === null ? '' : ' hidden' ?>><?= $escape($module->framework->tt('settings_preview_empty')) /* Choose a PNG to preview the custom image. */ ?></p>
+                    <div id="sigwm-custom-image-preview-area" class="sigwm-settings-preview border rounded d-flex flex-column align-items-center justify-content-center p-2">
+                        <canvas id="sigwm-watermark-preview" width="460" height="158" aria-label="<?= $escape($module->framework->tt('settings_preview_heading')) /* Preview */ ?>"></canvas>
+                        <p id="sigwm-custom-image-preview-empty" class="text-muted text-center mb-0 mt-1"<?= $previewUrl === null ? '' : ' hidden' ?>><?= $escape($module->framework->tt('settings_preview_empty')) /* Choose a PNG to preview the custom image. */ ?></p>
                     </div>
-                    <p class="form-text mb-0"><?= $escape($module->framework->tt('settings_preview_help')) /* The preview updates when you choose a replacement image or change its rotation. The final repeated watermark is additionally lightened and scaled for each signature. */ ?></p>
+                    <p class="form-text mb-0"><?= $escape($module->framework->tt('settings_preview_help')) /* This representative WM1 preview uses a dummy signature and identifier values. It updates when you change the background mode, image, or rotation; the final image uses the actual signature and capture values. */ ?></p>
                 </section>
             </div>
         </div>
@@ -230,6 +234,7 @@ $module->framework->tt_transferToJavascriptModuleObject(array(
     </form>
 </div>
 
+<img id="sigwm-custom-image-preview" src="<?= $escape($previewUrl ?? '') ?>" alt="" hidden>
 <script src="<?= $escape($module->getUrl('js/ConsoleDebugLogger.js')) ?>"></script>
 <script src="<?= $escape($module->getUrl('js/project-settings.js')) ?>"></script>
 <script>
