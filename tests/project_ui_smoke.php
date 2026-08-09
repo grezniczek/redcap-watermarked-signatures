@@ -296,6 +296,10 @@ foreach (array('unbound-upload-retention-days', 'public-project-reference') as $
     projectUiAssert(($projectSettings[$hiddenSettingKey]['hidden'] ?? false) === true, 'Custom project setting is still exposed in the standard settings dialog: ' . $hiddenSettingKey);
 }
 projectUiAssert(($projectSettings['javascript-debug']['hidden'] ?? false) !== true, 'Browser debug should remain in the standard settings dialog.');
+projectUiAssert(
+    ($config['auth-ajax-actions'] ?? array()) === array('validate-project-settings'),
+    'Project settings AJAX validation action is not configured.'
+);
 $english = parse_ini_file(__DIR__ . '/../lang/English.ini');
 projectUiAssert(is_array($english), 'English language file is invalid.');
 $german = parse_ini_file(__DIR__ . '/../lang/German.ini');
@@ -376,8 +380,20 @@ projectUiAssert(strpos($settingsPageSource, 'redcap_csrf_token') !== false, 'Pro
 projectUiAssert(strpos($settingsPageSource, 'enctype="multipart/form-data"') !== false, 'Project settings form cannot upload custom images.');
 projectUiAssert(strpos($settingsPageSource, 'accept="image/png,.png"') !== false, 'Project settings form does not restrict custom uploads to PNG files.');
 projectUiAssert(strpos($settingsPageSource, 'type="range"') !== false, 'Project settings form does not provide a rotation control.');
+projectUiAssert(strpos($settingsPageSource, "getUrl('js/ConsoleDebugLogger.js')") !== false, 'Project settings page does not load the configured debug logger.');
 projectUiAssert(strpos($settingsPageSource, "getUrl('js/project-settings.js')") !== false, 'Project settings page does not load its preview script.');
+projectUiAssert(strpos($settingsPageSource, 'form-control-sm') !== false, 'Project settings form does not use compact Bootstrap controls.');
+projectUiAssert(strpos($settingsPageSource, 'settings_unsaved_changes') !== false, 'Project settings page does not render an unsaved-changes indicator.');
+projectUiAssert(strpos($settingsPageSource, 'settings_discard') !== false, 'Project settings page does not render a discard-changes action.');
+projectUiAssert(strpos($settingsPageSource, '$_POST[$field]') !== false, 'Project settings page does not retain editable values after a failed save.');
+projectUiAssert(strpos($settingsPageSource, 'initializeJavascriptModuleObject') !== false, 'Project settings page does not initialize the framework JavaScript module object.');
+projectUiAssert(strpos($settingsPageSource, 'tt_transferToJavascriptModuleObject') !== false, 'Project settings page does not transfer validation language strings to JavaScript.');
 projectUiAssert(strpos($settingsScriptSource, 'FileReader') !== false, 'Project settings preview does not load replacement images locally.');
-projectUiAssert(strpos($settingsScriptSource, "rotate(' + rotation.value + 'deg)") !== false, 'Project settings preview does not reflect the configured rotation.');
+projectUiAssert(strpos($settingsScriptSource, 'fittedScale') !== false, 'Project settings preview does not scale rotated images to fit the preview area.');
+projectUiAssert(strpos($settingsScriptSource, "rotate(' + rotation.value + 'deg) scale('") !== false, 'Project settings preview does not reflect the configured rotation.');
+projectUiAssert(strpos($settingsScriptSource, 'module.ajax(config.validationAction, payload)') !== false, 'Project settings changes are not validated through the framework AJAX API.');
+projectUiAssert(strpos($settingsScriptSource, 'ConsoleDebugLogger') !== false, 'Project settings script does not honor the browser-debug setting.');
+projectUiAssert(strpos($settingsScriptSource, "window.addEventListener('beforeunload'") !== false, 'Project settings page does not guard against losing unsaved changes.');
+projectUiAssert(strpos($settingsScriptSource, 'window.location.reload()') !== false, 'Project settings discard action does not reload the saved values.');
 
 echo "Watermarked Signatures project UI smoke tests passed.\n";

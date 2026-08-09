@@ -16,6 +16,7 @@
     "framework-version": 16,
     "enable-no-auth-logging": true,
     "auth-ajax-actions": [
+        "validate-project-settings"
     ],
     "links": {
         "control-center": [

@@ -539,6 +539,31 @@ namespace {
     moduleAssert(strlen($savedImageBytes) <= Renderer::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES, 'Custom project settings stored an image above the final size limit.');
     $savedBackgroundProfile = invokePrivate($projectSettingsModule, 'background_image_profile');
     moduleAssert($savedBackgroundProfile['mode'] === 'custom' && $savedBackgroundProfile['rotation'] === -30, 'Custom project settings did not apply the saved image rotation to rendering.');
+    $ajaxSettingsValidation = $projectSettingsModule->redcap_module_ajax(
+        WatermarkedSignaturesExternalModule::AJAX_VALIDATE_PROJECT_SETTINGS,
+        array(
+            'retention_days' => '17',
+            'public_project_reference' => 'INVALID!REFERENCE',
+            'background_image_mode' => 'custom',
+            'background_image_rotation' => '181',
+            'has_pending_custom_image' => false
+        ),
+        123,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+    );
+    moduleAssert(!$ajaxSettingsValidation['ok'], 'Project settings AJAX validation accepted invalid values.');
+    moduleAssert($ajaxSettingsValidation['errors']['public_project_reference'] === 'settings_error_public_project_reference', 'Project settings AJAX validation did not identify an invalid public reference.');
+    moduleAssert($ajaxSettingsValidation['errors']['background_image_rotation'] === 'settings_error_background_rotation', 'Project settings AJAX validation did not identify an invalid rotation.');
     $retainedImageEdocId = $projectSettingsModule->projectSettings['custom-background-image'];
     $redcapSettings = $projectSettingsModule->save_project_settings(123, array(
         'retention_days' => '17',

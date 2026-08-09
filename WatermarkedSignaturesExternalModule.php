@@ -62,6 +62,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
     const BACKGROUND_IMAGE_CUSTOM = "custom";
     const BACKGROUND_IMAGE_NONE = "none";
     const DEFAULT_BACKGROUND_IMAGE_ROTATION = Renderer::DEFAULT_BACKGROUND_IMAGE_ROTATION;
+    const AJAX_VALIDATE_PROJECT_SETTINGS = "validate-project-settings";
 
     #region Hooks
 
@@ -233,6 +234,32 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         }
     }
 
+    function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id)
+    {
+        if ($action !== self::AJAX_VALIDATE_PROJECT_SETTINGS) {
+            return null;
+        }
+        if (!is_array($payload)) {
+            return array(
+                "ok" => false,
+                "errors" => array("form" => "settings_error_invalid_request")
+            );
+        }
+
+        try {
+            return $this->validate_project_settings_input(
+                $project_id,
+                $payload,
+                !empty($payload["has_pending_custom_image"])
+            );
+        } catch (Throwable $exception) {
+            return array(
+                "ok" => false,
+                "errors" => array("form" => "settings_error_validation_unavailable")
+            );
+        }
+    }
+
     /**
      * @param int|string $projectId
      * @return array{retention_days:int,public_project_reference:string,background_image_mode:string,background_image_rotation:int,custom_image:array{available:bool,edoc_id:string,doc_name:?string,width:?int,height:?int,sha256:?string,preview_data_url:?string}}
@@ -264,6 +291,28 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
     }
 
     /**
+     * Validate the settings that can be sent through the framework AJAX API.
+     * File bytes are validated and normalized only by the ordinary form save.
+     *
+     * @param int|string $projectId
+     * @param array<string,mixed> $input
+     * @param bool $hasPendingCustomImage
+     * @return array{ok:bool,errors:array<string,string>}
+     */
+    public function validate_project_settings_input($projectId, $input, $hasPendingCustomImage = false)
+    {
+        $projectId = $this->require_project_settings_access($projectId);
+        $this->init_proj($projectId);
+        $this->init_config();
+
+        $errors = $this->project_settings_validation_errors($input, $hasPendingCustomImage);
+        return array(
+            "ok" => empty($errors),
+            "errors" => $errors
+        );
+    }
+
+    /**
      * @param int|string $projectId
      * @param array<string,mixed> $input
      * @param array<string,mixed>|null $uploadedFile
@@ -279,20 +328,18 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         }
 
         try {
+            $validationErrors = $this->project_settings_validation_errors(
+                $input,
+                $this->has_pending_custom_background_image($uploadedFile)
+            );
+            if (!empty($validationErrors)) {
+                throw new \InvalidArgumentException(reset($validationErrors));
+            }
             $retentionDays = $this->validate_unbound_upload_retention_days($input["retention_days"] ?? null);
             $projectReference = $this->validate_project_settings_public_reference($input["public_project_reference"] ?? null);
-            $backgroundMode = $input["background_image_mode"] ?? null;
-            if (!$this->is_valid_background_image_mode($backgroundMode)) {
-                throw new \InvalidArgumentException("settings_error_background_mode");
-            }
+            $backgroundMode = (string) $input["background_image_mode"];
             $backgroundRotation = $this->validate_background_image_rotation($input["background_image_rotation"] ?? null);
             $normalizedImage = $this->normalized_uploaded_custom_background_image($uploadedFile);
-            $existingImage = $this->custom_background_image_details();
-            if ($backgroundMode === self::BACKGROUND_IMAGE_CUSTOM
-                && $normalizedImage === null
-                && !$existingImage["available"]) {
-                throw new \InvalidArgumentException("settings_error_custom_image_required");
-            }
 
             $newEdocId = $normalizedImage === null
                 ? null
@@ -1304,6 +1351,59 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             throw new \InvalidArgumentException("settings_error_background_rotation");
         }
         return (int) $value;
+    }
+
+    /**
+     * @param array<string,mixed>|mixed $input
+     * @param bool $hasPendingCustomImage
+     * @return array<string,string>
+     */
+    private function project_settings_validation_errors($input, $hasPendingCustomImage)
+    {
+        if (!is_array($input)) {
+            return array("form" => "settings_error_invalid_request");
+        }
+
+        $errors = array();
+        try {
+            $this->validate_unbound_upload_retention_days($input["retention_days"] ?? null);
+        } catch (\InvalidArgumentException $exception) {
+            $errors["retention_days"] = $exception->getMessage();
+        }
+        try {
+            $this->validate_project_settings_public_reference($input["public_project_reference"] ?? null);
+        } catch (\InvalidArgumentException $exception) {
+            $errors["public_project_reference"] = $exception->getMessage();
+        }
+
+        $backgroundMode = $input["background_image_mode"] ?? null;
+        if (!$this->is_valid_background_image_mode($backgroundMode)) {
+            $errors["background_image_mode"] = "settings_error_background_mode";
+        }
+        try {
+            $this->validate_background_image_rotation($input["background_image_rotation"] ?? null);
+        } catch (\InvalidArgumentException $exception) {
+            $errors["background_image_rotation"] = $exception->getMessage();
+        }
+
+        if ($backgroundMode === self::BACKGROUND_IMAGE_CUSTOM && !$hasPendingCustomImage) {
+            $existingImage = $this->custom_background_image_details();
+            if (!$existingImage["available"]) {
+                $errors["custom_background_image"] = "settings_error_custom_image_required";
+            }
+        }
+        return $errors;
+    }
+
+    private function has_pending_custom_background_image($uploadedFile)
+    {
+        if (!is_array($uploadedFile) || !array_key_exists("error", $uploadedFile)) {
+            return false;
+        }
+        if (!is_int($uploadedFile["error"]) && !ctype_digit((string) $uploadedFile["error"])) {
+            return true;
+        }
+        return (int) $uploadedFile["error"] !== UPLOAD_ERR_NO_FILE;
     }
 
     private function normalized_uploaded_custom_background_image($uploadedFile)
