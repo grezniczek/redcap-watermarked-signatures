@@ -258,6 +258,15 @@ projectUiAssert($projectLinks[0]['show-header-and-footer'] === true, 'Project ve
 projectUiAssert(is_file(__DIR__ . '/../docs/project-user-guide.md'), 'Project verification documentation file is missing.');
 $english = parse_ini_file(__DIR__ . '/../lang/English.ini');
 projectUiAssert(is_array($english), 'English language file is invalid.');
+$german = parse_ini_file(__DIR__ . '/../lang/German.ini');
+projectUiAssert(is_array($german), 'German language file is invalid.');
+foreach ($english as $translationKey => $englishValue) {
+    projectUiAssert(array_key_exists($translationKey, $german), 'German language file is missing an English language key: ' . $translationKey);
+    projectUiAssert(is_string($german[$translationKey]) && $german[$translationKey] !== '', 'German language entry is empty: ' . $translationKey);
+}
+foreach ($german as $translationKey => $germanValue) {
+    projectUiAssert(array_key_exists($translationKey, $english), 'German language file contains an unknown key: ' . $translationKey);
+}
 projectUiAssert(($english['ui_project_verification_title'] ?? null) === 'Verify watermarked signature', 'Project verification title translation is missing.');
 projectUiAssert(($english['ui_documentation_prompt'] ?? null) === 'To learn more, check out the {documentation_link}.', 'Documentation prompt translation is missing.');
 $translatedConfigurationKeys = array(
