@@ -25,6 +25,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $verificationPage = array(
     'is_administrator' => false,
     'title' => 'Verify watermarked signature',
+    'documentation_url' => $module->getUrl('docs/project-user-guide.md'),
+    'documentation_label' => 'Project user guide',
+    'documentation_help' => 'Use this page to confirm whether a watermarked signature is valid, still current in its field, or requires follow-up.',
     'capture_reference' => $captureReference,
     'result' => $result,
     'detail_labels' => array(

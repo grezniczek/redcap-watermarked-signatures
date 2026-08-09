@@ -43,6 +43,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 $verificationPage = array(
     'is_administrator' => true,
     'title' => 'Administrator signature verification',
+    'documentation_url' => $module->getUrl('docs/administrator-guide.md'),
+    'documentation_label' => 'Administrator guide',
+    'documentation_help' => 'Use this Control Center page to investigate a signature across projects, review its integrity checks, and examine authorized technical history.',
     'capture_reference' => $captureReference,
     'edoc_id' => $edocId,
     'result' => $result,

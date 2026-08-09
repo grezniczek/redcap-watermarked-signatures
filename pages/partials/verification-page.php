@@ -12,6 +12,9 @@ $captureReference = $verificationPage['capture_reference'] ?? '';
 $edocId = $verificationPage['edoc_id'] ?? '';
 $result = $verificationPage['result'] ?? null;
 $detailLabels = $verificationPage['detail_labels'] ?? array();
+$documentationUrl = $verificationPage['documentation_url'] ?? null;
+$documentationLabel = $verificationPage['documentation_label'] ?? 'Documentation';
+$documentationHelp = $verificationPage['documentation_help'] ?? '';
 
 $statusPresentation = array(
     'valid_current' => array('Valid and current', 'success', 'All integrity checks pass and the bound field currently contains this signature.'),
@@ -68,6 +71,13 @@ $diagnosticSummaryLabels = array(
         <h4 style="margin-top:0;" class="clearfix"><i class="fa-solid fa-shield-halved me-2"></i><?= $escape($verificationPage['title']) ?></h4>
     <?php else: ?>
         <h1 class="projhdr"><i class="fa-solid fa-shield-halved me-2"></i><?= $escape($verificationPage['title']) ?></h1>
+    <?php endif; ?>
+
+    <?php if (is_string($documentationUrl) && $documentationUrl !== ''): ?>
+        <?php if (is_string($documentationHelp) && $documentationHelp !== ''): ?>
+            <p class="mb-1"><?= $escape($documentationHelp) ?></p>
+        <?php endif; ?>
+        <p class="mb-3">To learn more, check out the <a id="sigwm-verification-documentation" href="<?= $escape($documentationUrl) ?>" target="_blank" rel="noopener"><i class="fa-solid fa-book-open me-1"></i><?= $escape($documentationLabel) ?></a>.</p>
     <?php endif; ?>
 
     <form method="post" class="card card-body p-3 mb-3" autocomplete="off">
