@@ -66,8 +66,8 @@ The page may show a link to the bound field when your rights permit it.
 
 ## If the signature cannot be securely watermarked
 
-Reopen the signature dialog and capture the signature again. The module does
-not allow REDCap to save an unwatermarked signature when it cannot securely
+Refresh the form or survey page, then capture the signature again. The module
+does not allow REDCap to save an unwatermarked signature when it cannot securely
 apply the watermark. If the problem happens again, give a project administrator
 the project, instrument, field, and approximate time of the attempt. Do not try
 to work around the message by uploading the image to an ordinary file field.

@@ -187,12 +187,11 @@ stored signatures are intentionally left unchanged.
 
 ### REDCap reports that the signature could not be securely watermarked
 
-Reopen the signature dialog and capture the signature again. Capture envelopes
-are short-lived and the module deliberately prevents REDCap from saving an
-unwatermarked signature when it cannot securely watermark it. If the message
-repeats, contact a REDCap administrator with the project, instrument, field,
-and approximate time of the attempt; the module writes a technical error event
-where possible.
+Refresh the form or survey page, then capture the signature again. Capture
+envelopes are short-lived and the module deliberately prevents REDCap from
+saving an unwatermarked signature when it cannot securely watermark it. If the
+message repeats, contact a REDCap administrator with the project, instrument,
+field, and approximate time of the attempt.
 
 ### The verification link is missing
 

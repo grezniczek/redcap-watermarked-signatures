@@ -348,13 +348,20 @@ the upload provenance event is created.
 
 The field envelope represents authorization to upload a signature for that field during the current page/session context.
 
-It may be reused for:
+Authenticated data-entry envelopes may be reused for:
 
 - deleting and redrawing a signature;
 - typed-signature recreation;
 - legitimate iframe transport retries.
 
 Each accepted upload still receives a new capture reference and normally a new edoc ID.
+
+For unauthenticated survey uploads, the receiver reserves the envelope nonce on
+its first use. The reservation stores only a SHA-256 digest of the nonce and is
+protected by a primary-database named lock. A repeated nonce fails closed
+without creating another edoc or technical log event. The respondent must
+refresh the page to obtain a new envelope before trying again. Reservations are
+purged after the maximum accepted envelope lifetime plus clock skew.
 
 ### 7.3 Envelope expiry
 
@@ -978,9 +985,11 @@ The following should normally be retained for as long as verification is promise
 Unbound upload provenance may be purged after a configurable period.
 
 The implementation uses a project-level retention setting with a default of 90
-days. A daily module cron purges only expired `sigwm_upload` entries that have
-no `sigwm_bind` event; a value of `0` disables automatic purging. Malformed
-upload provenance is retained for investigation rather than silently removed.
+days. A daily module cron purges expired `sigwm_upload` entries that have no
+`sigwm_bind` event; a value of `0` disables that upload-provenance cleanup.
+Unauthenticated envelope-nonce reservations are always purged after the maximum
+accepted envelope lifetime plus clock skew. Malformed upload provenance is
+retained for investigation rather than silently removed.
 
 ### 20.3 No image duplication
 

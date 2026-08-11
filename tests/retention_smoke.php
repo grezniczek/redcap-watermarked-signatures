@@ -108,6 +108,8 @@ $module->addEvent('sigwm_upload', 1002, '2026-01-01 00:00:00');
 $module->addEvent('sigwm_bind', 1002, '2026-01-01 00:01:00');
 $module->addEvent('sigwm_upload', 1003, '2026-07-16 00:00:00');
 $module->addEvent('sigwm_upload', 0, '2026-01-01 00:00:00');
+$module->addEvent('sigwm_envelope_nonce', 0, '2026-01-01 00:00:00');
+$module->addEvent('sigwm_envelope_nonce', 0, '2026-07-16 00:00:00');
 
 $repository = new LogRepository($module, new BindingMac(str_repeat('a', 32)));
 $removed = $repository->purgeExpiredUnboundUploads('2026-04-18 00:00:00');
@@ -121,5 +123,18 @@ retentionAssert(!in_array('sigwm_upload:1001', $remaining, true), 'Expired unbou
 retentionAssert(in_array('sigwm_upload:1002', $remaining, true), 'Bound upload provenance was purged.');
 retentionAssert(in_array('sigwm_upload:1003', $remaining, true), 'Recent upload provenance was purged.');
 retentionAssert(in_array('sigwm_upload:0', $remaining, true), 'Malformed upload provenance was purged.');
+
+$removedNonces = $repository->purgeExpiredEnvelopeNonces('2026-04-18 00:00:00');
+retentionAssert($removedNonces === 1, 'Exactly one expired envelope nonce reservation should be purged.');
+$remainingNonceTimestamps = array();
+foreach ($module->events as $event) {
+    if ($event['message'] === 'sigwm_envelope_nonce') {
+        $remainingNonceTimestamps[] = $event['timestamp'];
+    }
+}
+retentionAssert(
+    $remainingNonceTimestamps === array('2026-07-16 00:00:00'),
+    'Envelope nonce cleanup removed the wrong replay guard.'
+);
 
 echo "Retention smoke test passed.\n";

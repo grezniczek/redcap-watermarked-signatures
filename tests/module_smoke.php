@@ -4,10 +4,16 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     class ExternalModulesStub
     {
         public static $username = null;
+        public static $noAuth = false;
 
         public static function getUsername()
         {
             return self::$username;
+        }
+
+        public static function isNoAuth()
+        {
+            return self::$noAuth;
         }
     }
 
@@ -49,6 +55,17 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
 
         public function queryLogs($sql, $parameters = array())
         {
+            if (strpos($sql, 'envelope_nonce_hash = ?') !== false) {
+                list($message, $nonceHash) = $parameters;
+                foreach ($this->logs as $index => $log) {
+                    if ($log[0] === $message
+                        && hash_equals((string) ($log[1]['envelope_nonce_hash'] ?? ''), (string) $nonceHash)) {
+                        return new FakeModuleResult(array('log_id' => $index + 1));
+                    }
+                }
+                return new FakeModuleResult(null);
+            }
+
             if (strpos($sql, 'where message = ? and record = ?') !== false) {
                 list($message, $record) = $parameters;
                 foreach ($this->logs as $index => $log) {
@@ -219,7 +236,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         public function tt($key)
         {
             $translations = array(
-                'ui_upload_watermark_failed' => 'The signature could not be securely watermarked. Please reopen the signature dialog and try again.'
+                'ui_upload_watermark_failed' => 'The signature could not be securely watermarked. Refresh the form or survey page, then capture the signature again.'
             );
             return $translations[$key] ?? $key;
         }
@@ -758,6 +775,35 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     $surveyModule->redcap_save_record(123, 'SURVEY-2001', 'consent', 417, null, null, null, 1);
     moduleAssert(count($surveyModule->logs) === $surveyLogCount, 'A later staff save produced a false origin mismatch for an existing survey binding.');
 
+    $replaySurveyModule = new WatermarkedSignaturesExternalModule();
+    $replaySurveyModule->framework = new FakeFramework();
+    setPrivateProperty($replaySurveyModule, 'proj', new FakeProject());
+    setPrivateProperty($replaySurveyModule, 'project_id', 123);
+    \ExternalModules\ExternalModules::$username = null;
+    ExternalModulesStub::$noAuth = true;
+    ob_start();
+    $replaySurveyModule->redcap_survey_page(123, null, 'consent', 417, null, 'public-survey-hash', null, 1);
+    $replaySurveyConfig = injectedConfig(ob_get_clean());
+    $replayEnvelope = $replaySurveyConfig['envelopes']['participant_signature'];
+    captureSignatureUpload($replaySurveyModule, $replayEnvelope, $originalPng, 99505);
+    $replayLogCount = count($replaySurveyModule->logs);
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_GET = array('NOAUTH' => '1', 'event_id' => '417', 'instance' => '1', 'page' => 'consent');
+    $_POST = array(
+        'field_name' => 'participant_signature-linknew',
+        'sigwm_envelope' => $replayEnvelope,
+        'myfile_base64' => base64_encode($originalPng)
+    );
+    ob_start();
+    invokePrivate($replaySurveyModule, 'intercept_signature_upload');
+    $replayFailureResponse = ob_get_clean();
+    ExternalModulesStub::$noAuth = false;
+
+    moduleAssert($replaySurveyModule->exitRequested, 'Replayed no-auth envelope did not fail closed.');
+    moduleAssert(count($replaySurveyModule->logs) === $replayLogCount, 'Replayed no-auth envelope appended a log entry.');
+    moduleAssert(count(payloadsForMessage($replaySurveyModule, 'sigwm_upload')) === 1, 'Replayed no-auth envelope created another upload provenance event.');
+    moduleAssert(strpos($replayFailureResponse, 'could not be securely watermarked') !== false, 'Replayed no-auth envelope did not return the standard failure response.');
+
     $abandonedSurveyModule = new WatermarkedSignaturesExternalModule();
     $abandonedSurveyModule->framework = new FakeFramework();
     setPrivateProperty($abandonedSurveyModule, 'proj', new FakeProject());
@@ -1103,6 +1149,34 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert(strpos($failureResponse, 'could not be securely watermarked') !== false, 'The upload failure response is missing.');
     moduleAssert(strpos($failureResponse, 'stopUpload(0, "participant_signature"') !== false, 'The upload failure response did not emit a JSON-encoded field name.');
     moduleAssert(strpos($failureResponse, ", 3, true)") !== false, 'The failure response lost the repeat instance.');
+
+    $noAuthFailureModule = new WatermarkedSignaturesExternalModule();
+    $noAuthFailureModule->framework = new FakeFramework();
+    setPrivateProperty($noAuthFailureModule, 'proj', new FakeProject());
+    setPrivateProperty($noAuthFailureModule, 'project_id', 123);
+    ExternalModulesStub::$noAuth = true;
+    $_GET = array('NOAUTH' => '1', 'event_id' => '417', 'instance' => '3');
+    $_POST = array(
+        'field_name' => 'participant_signature-linknew',
+        'myfile_base64' => base64_encode($originalPng)
+    );
+
+    ob_start();
+    invokePrivate($noAuthFailureModule, 'intercept_signature_upload');
+    $noAuthFailureResponse = ob_get_clean();
+    ExternalModulesStub::$noAuth = false;
+
+    moduleAssert($noAuthFailureModule->exitRequested, 'No-auth missing envelopes do not fail closed.');
+    moduleAssert($noAuthFailureModule->logs === array(), 'No-auth upload failures were written to the durable module log.');
+    moduleAssert(strpos($noAuthFailureResponse, 'could not be securely watermarked') !== false, 'The no-auth upload failure response is missing.');
+
+    ExternalModulesStub::$noAuth = true;
+    moduleAssert(
+        invokePrivate($noAuthFailureModule, 'safe_log_event', array('sigwm_error_test', array('technical_message' => 'test'))) === null,
+        'No-auth technical logging was not suppressed.'
+    );
+    ExternalModulesStub::$noAuth = false;
+    moduleAssert($noAuthFailureModule->logs === array(), 'No-auth safe logging appended a durable module log entry.');
 
     $_POST = array('field_name' => 'participant_signature</script><script>alert(1)</script>-linknew');
     moduleAssert(invokePrivate($failedModule, 'posted_field_name') === null, 'A hostile posted field name was accepted.');

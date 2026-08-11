@@ -62,6 +62,24 @@ function signaturePng($width, $height, $typed = false, $transparent = false)
     return $png;
 }
 
+function denseBlackAndWhitePng($width, $height)
+{
+    $image = imagecreatetruecolor($width, $height);
+    $black = imagecolorallocate($image, 0, 0, 0);
+    $white = imagecolorallocate($image, 255, 255, 255);
+    $seed = 1234567;
+    for ($y = 0; $y < $height; $y++) {
+        for ($x = 0; $x < $width; $x++) {
+            $seed = ($seed * 1103515245 + 12345) & 0x7fffffff;
+            imagesetpixel($image, $x, $y, (($seed >> 16) & 1) === 1 ? $black : $white);
+        }
+    }
+
+    ob_start();
+    imagepng($image, null, 6);
+    return ob_get_clean();
+}
+
 assertTrue(
     CanonicalJson::encode(array('z' => 1, 'a' => array('d' => 4, 'b' => 2))) === '{"a":{"b":2,"d":4},"z":1}',
     'Canonical JSON ordering failed.'
@@ -114,6 +132,14 @@ if (extension_loaded('gd')) {
 
     $renderer = new Renderer();
     $captureReference = ReferenceGenerator::captureReference();
+    $largestBlackAndWhitePng = denseBlackAndWhitePng(
+        Renderer::MAX_SIGNATURE_IMAGE_WIDTH,
+        Renderer::MAX_SIGNATURE_IMAGE_HEIGHT
+    );
+    assertTrue(
+        strlen($largestBlackAndWhitePng) <= Renderer::MAX_SIGNATURE_IMAGE_BYTES,
+        'A dense black-and-white signature does not fit the upload size limit.'
+    );
     $watermarked = $renderer->renderBase64(
         base64_encode($png),
         $anchor,
@@ -272,7 +298,7 @@ if (extension_loaded('gd')) {
         array(80, 30, false, false),
         array(160, 60, true, true),
         array(460, 120, false, false),
-        array(1024, 240, true, false)
+        array(Renderer::MAX_SIGNATURE_IMAGE_WIDTH, Renderer::MAX_SIGNATURE_IMAGE_HEIGHT, true, false)
     );
     foreach ($formatCases as $case) {
         list($sourceWidth, $sourceHeight, $typed, $transparent) = $case;
@@ -352,6 +378,36 @@ if (extension_loaded('gd')) {
             '2026-07-16T14:32:05Z'
         );
     }, 'Renderer accepted the retired A- anchor format.');
+
+    assertThrows(function () use ($renderer, $anchor, $payload, $captureReference) {
+        $renderer->renderBase64(
+            base64_encode(signaturePng(Renderer::MAX_SIGNATURE_IMAGE_WIDTH + 1, Renderer::MAX_SIGNATURE_IMAGE_HEIGHT)),
+            $anchor,
+            $payload['context_ref'],
+            $captureReference,
+            '2026-07-16T14:32:05Z'
+        );
+    }, 'Renderer accepted a signature wider than the 2x canvas limit.');
+
+    assertThrows(function () use ($renderer, $anchor, $payload, $captureReference) {
+        $renderer->renderBase64(
+            base64_encode(signaturePng(Renderer::MAX_SIGNATURE_IMAGE_WIDTH, Renderer::MAX_SIGNATURE_IMAGE_HEIGHT + 1)),
+            $anchor,
+            $payload['context_ref'],
+            $captureReference,
+            '2026-07-16T14:32:05Z'
+        );
+    }, 'Renderer accepted a signature taller than the 2x canvas limit.');
+
+    assertThrows(function () use ($renderer, $anchor, $payload, $captureReference) {
+        $renderer->renderBase64(
+            str_repeat('A', Renderer::MAX_SIGNATURE_IMAGE_BASE64_BYTES + 1),
+            $anchor,
+            $payload['context_ref'],
+            $captureReference,
+            '2026-07-16T14:32:05Z'
+        );
+    }, 'Renderer accepted an encoded signature larger than 100 KiB.');
 
     assertThrows(function () use ($renderer, $png, $anchor, $payload, $captureReference) {
         $renderer->renderBase64(

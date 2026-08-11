@@ -8,9 +8,15 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Watermark;
 class Renderer
 {
     const VERSION = 1;
-    const MAX_DECODED_BYTES = 6291456;
-    const MAX_DIMENSION = 4096;
-    const MAX_PIXELS = 12000000;
+    // REDCap's drawing canvas is 460x120 pixels. Accept up to 2x in each
+    // direction to tolerate browser/device pixel-density variation, without
+    // allocating GD images from arbitrary public-survey uploads.
+    const MAX_SIGNATURE_IMAGE_BYTES = 102400;
+    const MAX_SIGNATURE_IMAGE_BASE64_BYTES = 136536;
+    const MAX_SIGNATURE_IMAGE_WIDTH = 920;
+    const MAX_SIGNATURE_IMAGE_HEIGHT = 240;
+    const MAX_CUSTOM_BACKGROUND_IMAGE_SOURCE_DIMENSION = 4096;
+    const MAX_CUSTOM_BACKGROUND_IMAGE_SOURCE_PIXELS = 12000000;
     const MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION = 16;
     const MAX_CUSTOM_BACKGROUND_IMAGE_DIMENSION = 512;
     const MAX_CUSTOM_BACKGROUND_IMAGE_BYTES = 1048576;
@@ -34,7 +40,7 @@ class Renderer
         if (!is_string($encodedPng) || $encodedPng === '') {
             throw new \InvalidArgumentException('The submitted signature image is empty.');
         }
-        if (strlen($encodedPng) > (self::MAX_DECODED_BYTES * 2)) {
+        if (strlen($encodedPng) > self::MAX_SIGNATURE_IMAGE_BASE64_BYTES) {
             throw new \InvalidArgumentException('The submitted signature image is too large.');
         }
 
@@ -42,7 +48,7 @@ class Renderer
         if ($bytes === false || $bytes === '') {
             throw new \InvalidArgumentException('The submitted signature is not valid base64.');
         }
-        if (strlen($bytes) > self::MAX_DECODED_BYTES) {
+        if (strlen($bytes) > self::MAX_SIGNATURE_IMAGE_BYTES) {
             throw new \InvalidArgumentException('The submitted signature image is too large.');
         }
 
@@ -56,7 +62,7 @@ class Renderer
         if ($width < 80 || $height < 30) {
             throw new \InvalidArgumentException('The submitted signature image is too small.');
         }
-        if ($width > self::MAX_DIMENSION || $height > self::MAX_DIMENSION || ($width * $height) > self::MAX_PIXELS) {
+        if ($width > self::MAX_SIGNATURE_IMAGE_WIDTH || $height > self::MAX_SIGNATURE_IMAGE_HEIGHT) {
             throw new \InvalidArgumentException('The submitted signature dimensions are not allowed.');
         }
 
@@ -200,9 +206,9 @@ class Renderer
         $sourceHeight = (int) $imageInfo[1];
         if ($sourceWidth < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
             || $sourceHeight < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
-            || $sourceWidth > self::MAX_DIMENSION
-            || $sourceHeight > self::MAX_DIMENSION
-            || ($sourceWidth * $sourceHeight) > self::MAX_PIXELS) {
+            || $sourceWidth > self::MAX_CUSTOM_BACKGROUND_IMAGE_SOURCE_DIMENSION
+            || $sourceHeight > self::MAX_CUSTOM_BACKGROUND_IMAGE_SOURCE_DIMENSION
+            || ($sourceWidth * $sourceHeight) > self::MAX_CUSTOM_BACKGROUND_IMAGE_SOURCE_PIXELS) {
             throw new \InvalidArgumentException('The uploaded custom background image dimensions are not allowed.');
         }
 

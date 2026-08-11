@@ -115,6 +115,16 @@ class BindingTestModule
     public function queryLogs($sql, $parameters)
     {
         $this->lastLogQuery = $sql;
+        if (strpos($sql, 'envelope_nonce_hash = ?') !== false) {
+            list($message, $nonceHash) = $parameters;
+            foreach ($this->events as $event) {
+                if ($event['message'] === $message
+                    && hash_equals((string) ($event['parameters']['envelope_nonce_hash'] ?? ''), (string) $nonceHash)) {
+                    return new BindingTestResult(array('log_id' => $event['log_id']));
+                }
+            }
+            return new BindingTestResult(null);
+        }
         if (strpos($sql, 'record = ?') !== false) {
             list($message, $record) = $parameters;
             foreach ($this->events as $event) {
@@ -258,6 +268,24 @@ bindingAssert($GLOBALS['bindingPrimaryLogQueryCount'] > 0, 'Binding lookup did n
 $primaryLogQueriesBeforeRenameLookup = $GLOBALS['bindingPrimaryLogQueryCount'];
 bindingAssert($repository->findBoundRecordId('R-001') === 'R-001', 'Bound record lookup did not return the current record ID.');
 bindingAssert($GLOBALS['bindingPrimaryLogQueryCount'] === $primaryLogQueriesBeforeRenameLookup + 1, 'Bound record lookup did not use the primary database path.');
+
+$nonceModule = new BindingTestModule();
+$GLOBALS['bindingPrimaryModule'] = $nonceModule;
+$nonceRepository = new LogRepository($nonceModule, $mac);
+$nonce = str_repeat('a', 32);
+bindingAssert($nonceRepository->reserveEnvelopeNonce($nonce) === true, 'First envelope nonce reservation was not accepted.');
+bindingAssert($nonceRepository->reserveEnvelopeNonce($nonce) === false, 'Replayed envelope nonce was not rejected.');
+bindingAssert(count($nonceModule->events) === 1, 'Replayed envelope nonce appended another log entry.');
+bindingAssert(
+    $nonceModule->events[0]['parameters']['envelope_nonce_hash'] === hash('sha256', $nonce),
+    'Envelope nonce reservation did not store the nonce hash.'
+);
+bindingAssert(
+    !in_array($nonce, $nonceModule->events[0]['parameters'], true),
+    'Envelope nonce reservation stored the raw nonce.'
+);
+bindingAssert($nonceModule->releaseCount === 2, 'Envelope nonce locks were not released.');
+bindingAssert(strlen($nonceModule->lockNames[0]) <= 64, 'Envelope nonce lock name exceeds MySQL\'s limit.');
 
 $mismatchModule = new BindingTestModule();
 $GLOBALS['bindingPrimaryModule'] = $mismatchModule;

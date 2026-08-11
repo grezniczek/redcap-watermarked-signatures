@@ -148,6 +148,75 @@ class LogRepository
         return $removed;
     }
 
+    /**
+     * Reserve a signed no-auth capture envelope exactly once. The nonce itself
+     * is never persisted; its SHA-256 digest is enough for replay detection.
+     * The named lock makes the lookup-and-insert sequence safe across
+     * concurrent upload requests and database replicas.
+     */
+    public function reserveEnvelopeNonce($nonce)
+    {
+        if (!is_string($nonce) || !preg_match('/^[A-Za-z0-9_-]{20,64}$/', $nonce)) {
+            throw new \InvalidArgumentException('The signature envelope nonce is invalid.');
+        }
+
+        $nonceHash = hash('sha256', $nonce);
+        // MySQL named locks are limited to 64 characters.
+        $lockName = 'sigwm:nonce:' . substr($nonceHash, 0, 48);
+        $lockResult = $this->queryPrimary('SELECT GET_LOCK(?, ?)', array($lockName, self::LOCK_TIMEOUT_SECONDS));
+        $lockRow = $lockResult ? $lockResult->fetch_row() : null;
+
+        if ((int) ($lockRow[0] ?? 0) !== 1) {
+            throw new \RuntimeException('Timed out while acquiring the signature envelope lock.');
+        }
+
+        try {
+            $result = $this->queryLogsPrimary(
+                // Envelope nonces are random installation-wide values. Query
+                // every project so a collision cannot weaken the one-time
+                // use invariant.
+                'select log_id where message = ? and envelope_nonce_hash = ? and project_id >= 0 order by log_id asc limit 1',
+                array('sigwm_envelope_nonce', $nonceHash)
+            );
+            if ($result && $result->fetch_assoc()) {
+                return false;
+            }
+
+            $this->module->log('sigwm_envelope_nonce', array(
+                'envelope_nonce_hash' => $nonceHash
+            ));
+            return true;
+        } finally {
+            $this->queryPrimary('SELECT RELEASE_LOCK(?)', array($lockName));
+        }
+    }
+
+    /**
+     * Remove expired replay guards. A reservation is retained past the
+     * maximum allowed envelope lifetime, including permitted clock skew.
+     */
+    public function purgeExpiredEnvelopeNonces($beforeTimestamp)
+    {
+        $result = $this->module->queryLogs(
+            'select log_id where message = ? and timestamp < ? order by log_id asc',
+            array('sigwm_envelope_nonce', (string) $beforeTimestamp)
+        );
+        $removed = 0;
+
+        while ($result && ($row = $result->fetch_assoc())) {
+            $logId = isset($row['log_id']) ? (int) $row['log_id'] : 0;
+            if ($logId < 1) {
+                continue;
+            }
+            $removed += (int) $this->module->removeLogs(
+                'log_id = ? and message = ?',
+                array($logId, 'sigwm_envelope_nonce')
+            );
+        }
+
+        return $removed;
+    }
+
     public function appendRecordRename($event)
     {
         $this->module->log('sigwm_record_rename', array(

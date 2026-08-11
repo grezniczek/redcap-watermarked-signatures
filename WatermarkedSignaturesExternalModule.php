@@ -186,18 +186,22 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             }
 
             try {
-                $retentionDays = $this->unbound_upload_retention_days($projectId);
-                if ($retentionDays === 0) {
-                    continue;
-                }
-
                 $this->framework->setProjectId($projectId);
                 $repository = new LogRepository($this, new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO)));
                 // EM log timestamps are written with the database's current
                 // application time; use REDCap/PHP's configured local time
                 // rather than serializing this cutoff as UTC.
-                $cutoff = date('Y-m-d H:i:s', time() - ($retentionDays * 86400));
-                $repository->purgeExpiredUnboundUploads($cutoff);
+                $nonceCutoff = date(
+                    'Y-m-d H:i:s',
+                    time() - self::ENVELOPE_MAX_TTL_SECONDS - self::CLOCK_SKEW_SECONDS
+                );
+                $repository->purgeExpiredEnvelopeNonces($nonceCutoff);
+
+                $retentionDays = $this->unbound_upload_retention_days($projectId);
+                if ($retentionDays > 0) {
+                    $cutoff = date('Y-m-d H:i:s', time() - ($retentionDays * 86400));
+                    $repository->purgeExpiredUnboundUploads($cutoff);
+                }
             } catch (Throwable $exception) {
                 error_log('Watermarked Signatures retention cleanup failed for project ' . $projectId . ': ' . $exception->getMessage());
             }
@@ -581,6 +585,13 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
     private function safe_log_event($eventType, $parameters)
     {
+        // Public-survey requests are client-triggered and may be repeated
+        // without a REDCap user session. Keep their durable log footprint to
+        // the successful provenance event and the one-time replay guard.
+        if (\ExternalModules\ExternalModules::isNoAuth()) {
+            return null;
+        }
+
         try {
             return $this->log($eventType, $parameters);
         } catch (Throwable $exception) {
@@ -832,6 +843,21 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
             return;
         }
 
+        if (\ExternalModules\ExternalModules::isNoAuth()) {
+            try {
+                $repository = new LogRepository($this, new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO)));
+                if (!$repository->reserveEnvelopeNonce($payload['nonce'])) {
+                    throw new \UnexpectedValueException('The signed signature envelope has already been used.');
+                }
+            } catch (Throwable $exception) {
+                // Fail closed. fail_upload() deliberately does not persist a
+                // no-auth error row, so nonce replay attempts cannot amplify
+                // the module log.
+                $this->fail_upload($field, 'sigwm_error_replayed_envelope', $exception->getMessage());
+                return;
+            }
+        }
+
         $scope = array(
             "v" => Renderer::VERSION,
             "pid" => (int) $payload["pid"],
@@ -1058,17 +1084,23 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
     private function fail_upload($field, $eventType, $technicalMessage)
     {
-        try {
-            $this->log($eventType, array(
-                "field" => $field,
-                "event_id" => isset($_GET["event_id"]) && is_numeric($_GET["event_id"]) ? (int) $_GET["event_id"] : "",
-                "technical_message" => substr((string) $technicalMessage, 0, 1000)
-            ));
-        } catch (Throwable $exception) {
-            error_log("Watermarked Signatures error logging failed: " . $exception->getMessage());
+        // A public survey respondent can repeatedly submit an invalid upload.
+        // Fail closed, but do not turn those requests into unbounded durable
+        // module-log entries. Successful survey uploads remain logged later,
+        // once REDCap has assigned their edoc ID.
+        if (!\ExternalModules\ExternalModules::isNoAuth()) {
+            try {
+                $this->log($eventType, array(
+                    "field" => $field,
+                    "event_id" => isset($_GET["event_id"]) && is_numeric($_GET["event_id"]) ? (int) $_GET["event_id"] : "",
+                    "technical_message" => substr((string) $technicalMessage, 0, 1000)
+                ));
+            } catch (Throwable $exception) {
+                error_log("Watermarked Signatures error logging failed: " . $exception->getMessage());
+            }
         }
 
-        $message = $this->framework->tt('ui_upload_watermark_failed'); // The signature could not be securely watermarked. Please reopen the signature dialog and try again.
+        $message = $this->framework->tt('ui_upload_watermark_failed'); // The signature could not be securely watermarked. Refresh the form or survey page, then capture the signature again.
         $fieldJson = json_encode(
             $this->escape($field),
             JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
