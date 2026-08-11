@@ -2,23 +2,21 @@
 # See: https://citation-file-format.github.io/
 
 cff-version: 1.2.0
-message: >-
-  If you use Watermarked Signatures in a project that generates a research output,
-  please cite this software in addition to citing REDCap.
+message: >
+  If you use Watermarked Signatures in a project that generates a research output, please cite this software in addition to citing REDCap.
 
 type: software
 
 title: "Watermarked Signatures (REDCap External Module)"
-short-title: "Watermarked Signatures"
 
-abstract: >-
-  Watermarked Signatures is a REDCap External Module for ...
+abstract: >
+  Watermarked Signatures is a REDCap External Module that adds a visible, context-bound watermark to newly captured REDCap signatures.
 
 authors:
   - family-names: "Rezniczek"
     given-names: "Günther A."
     orcid: "https://orcid.org/0000-0002-0852-6002"
-    affiliation: "St. Elisabeth Gruppe GmbH, Klinikum der Ruhr-Universität Bochum, Herne, Germany"
+    affiliation: "Department of Gynecology and Obstetrics, Ruhr University Bochum, Marien Hospital Herne"
 
 keywords:
   - REDCap
@@ -29,14 +27,4 @@ keywords:
 
 license: "MIT"
 
-repository-code: "https://github.com/grezniczek/redcap-watermarked-signatures"
-url: "https://github.com/grezniczek/redcap-watermarked-signatures"
-
-version: "1.0.0"
-date-released: "2026-08-09"
 doi: "10.5281/zenodo.xxx"
-
-identifiers:
-  - type: doi
-    value: "10.5281/zenodo.xxx"
-    description: "Archived software release"

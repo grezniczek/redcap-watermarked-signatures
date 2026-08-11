@@ -1,0 +1,163 @@
+name: Validate publication metadata
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install metadata validators
+        run: python -m pip install --disable-pip-version-check "cffconvert==2.0.0" "PyYAML>=6,<7"
+
+      - name: Validate CITATION.cff against CFF 1.2
+        run: cffconvert --validate -i CITATION.cff
+
+      - name: Validate REDCap EM publication metadata rules
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          import yaml
+
+          errors = []
+          zenodo_path = Path(".zenodo.json")
+          cff_path = Path("CITATION.cff")
+
+          for path in (zenodo_path, cff_path):
+              if not path.is_file():
+                  errors.append(f"Missing required file: {path}")
+
+          if errors:
+              for error in errors:
+                  print(f"::error::{error}")
+              sys.exit(1)
+
+          zenodo_text = zenodo_path.read_text(encoding="utf-8")
+          cff_text = cff_path.read_text(encoding="utf-8")
+
+          if "REPLACE_ME" in zenodo_text or "REPLACE_ME" in cff_text:
+              errors.append("Publication metadata still contains REPLACE_ME placeholders.")
+
+          try:
+              z = json.loads(zenodo_text)
+          except json.JSONDecodeError as exc:
+              errors.append(f".zenodo.json is not valid JSON: {exc}")
+              z = {}
+
+          try:
+              c = yaml.safe_load(cff_text) or {}
+          except yaml.YAMLError as exc:
+              errors.append(f"CITATION.cff is not valid YAML: {exc}")
+              c = {}
+
+          # Release-specific metadata must come from the GitHub release/tag.
+          for key in ("version", "publication_date", "doi"):
+              if key in z:
+                  errors.append(
+                      f".zenodo.json must not contain '{key}'; "
+                      "release-specific metadata comes from GitHub/Zenodo."
+                  )
+
+          for key in ("version", "date-released"):
+              if key in c:
+                  errors.append(
+                      f"CITATION.cff must not contain top-level '{key}'; "
+                      "the Git tag is the version source of truth."
+                  )
+
+          # Fixed structural expectations for public REDCap EMs.
+          if z.get("upload_type") != "software":
+              errors.append(".zenodo.json: upload_type must be 'software'.")
+          if z.get("access_right") != "open":
+              errors.append(".zenodo.json: access_right must be 'open'.")
+          if z.get("language") != "eng":
+              errors.append(".zenodo.json: language must be 'eng'.")
+          if c.get("cff-version") != "1.2.0":
+              errors.append("CITATION.cff: cff-version must be 1.2.0.")
+          if c.get("type") != "software":
+              errors.append("CITATION.cff: type must be 'software'.")
+
+          # Keep duplicated human-maintained metadata synchronized.
+          if str(z.get("title", "")).strip() != str(c.get("title", "")).strip():
+              errors.append("Title differs between .zenodo.json and CITATION.cff.")
+
+          if str(z.get("description", "")).strip() != str(c.get("abstract", "")).strip():
+              errors.append("Description/abstract differs between .zenodo.json and CITATION.cff.")
+
+          z_keywords = {str(x).strip() for x in z.get("keywords", [])}
+          c_keywords = {str(x).strip() for x in c.get("keywords", [])}
+          if z_keywords != c_keywords:
+              errors.append("Keywords differ between .zenodo.json and CITATION.cff.")
+
+          z_license = str(z.get("license", "")).strip().lower()
+          c_license = str(c.get("license", "")).strip().lower()
+          if not z_license or z_license != c_license:
+              errors.append("License differs between .zenodo.json and CITATION.cff.")
+
+          z_creators = z.get("creators", [])
+          c_authors = c.get("authors", [])
+          if not z_creators:
+              errors.append(".zenodo.json must contain at least one creator.")
+          if not c_authors:
+              errors.append("CITATION.cff must contain at least one author.")
+
+          if z_creators and c_authors:
+              z_orcid = str(z_creators[0].get("orcid", "")).strip()
+              c_orcid = str(c_authors[0].get("orcid", "")).strip()
+              c_orcid = c_orcid.removeprefix("https://orcid.org/")
+              if z_orcid != c_orcid:
+                  errors.append("Primary creator ORCID differs between the two metadata files.")
+
+              z_aff = str(z_creators[0].get("affiliation", "")).strip()
+              c_aff = str(c_authors[0].get("affiliation", "")).strip()
+              if z_aff != c_aff:
+                  errors.append("Primary creator affiliation differs between the two metadata files.")
+
+          # The repository belongs in CITATION.cff. Zenodo derives its own
+          # GitHub relation from the GitHub integration, so don't duplicate it
+          # in .zenodo.json related_identifiers.
+          github_repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+          if github_repository:
+              expected_repo = f"https://github.com/{github_repository}"
+              for field in ("repository-code", "url"):
+                  actual = str(c.get(field, "")).rstrip("/")
+                  if actual != expected_repo:
+                      errors.append(
+                          f"CITATION.cff: {field} must be '{expected_repo}' "
+                          f"(found '{actual}')."
+                      )
+
+              for item in z.get("related_identifiers", []) or []:
+                  identifier = str(item.get("identifier", "")).rstrip("/")
+                  if identifier == expected_repo:
+                      errors.append(
+                          ".zenodo.json should not duplicate the GitHub repository "
+                          "in related_identifiers; Zenodo derives that relation automatically."
+                      )
+
+          if errors:
+              for error in errors:
+                  print(f"::error::{error}")
+              sys.exit(1)
+
+          print("Publication metadata checks passed.")
+          PY

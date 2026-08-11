@@ -2,7 +2,7 @@
     "name": "Watermarked Signatures",
     "tt_name": "config_module_name",
     "namespace": "DE\\RUB\\WatermarkedSignaturesExternalModule",
-    "description": "A REDCap external module that adds watermarks to signatures.",
+    "description": "Watermarked Signatures is a REDCap External Module that adds a visible, context-bound watermark to newly captured REDCap signatures.",
     "tt_description": "config_module_description",
     "documentation": "config_readme",
     "tt_documentation": true,
@@ -10,7 +10,7 @@
         {
             "name": "Günther Rezniczek",
             "email": "guenther.rezniczek@rub.de",
-            "institution": "St. Elisabeth Gruppe - Klinikum der Ruhr-Universität Bochum"
+            "institution": "Department of Gynecology and Obstetrics, Ruhr University Bochum, Marien Hospital Herne"
         }
     ],
     "framework-version": 16,
