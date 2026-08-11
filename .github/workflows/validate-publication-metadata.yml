@@ -2,8 +2,8 @@ name: Validate publication metadata
 
 on:
   push:
-  pull_request:
-  workflow_dispatch:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
