@@ -18,13 +18,16 @@ authors:
     orcid: "https://orcid.org/0000-0002-0852-6002"
     affiliation: "Department of Gynecology and Obstetrics, Ruhr University Bochum, Marien Hospital Herne"
 
+repository-code: "https://github.com/grezniczek/redcap-watermarked-signatures"
+url: "https://github.com/grezniczek/redcap-watermarked-signatures"
+
+license: "MIT"
+
 keywords:
   - REDCap
   - REDCap External Module
   - signatures
   - e-consent
   - clinical research
-
-license: "MIT"
 
 doi: "10.5281/zenodo.xxx"
