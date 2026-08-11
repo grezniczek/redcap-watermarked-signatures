@@ -190,6 +190,121 @@ jobs:
           print("Publication metadata checks passed.")
           PY
 
+      - name: Validate Zenodo DOI in citation and READMEs
+        if: steps.tag.outputs.releasable == 'true' && steps.tag.outputs.prep != 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          import yaml
+
+          # -----------------------------
+          # Read DOI from CITATION.cff
+          # -----------------------------
+          cff_path = Path("CITATION.cff")
+      
+          if not cff_path.is_file():
+              print("::error::CITATION.cff not found.")
+              sys.exit(1)
+
+          cff = yaml.safe_load(cff_path.read_text(encoding="utf-8"))
+
+          doi = str(cff.get("doi", "")).strip()
+
+          if not doi:
+              print(
+                  "::error::CITATION.cff must contain a DOI "
+                  "for every real release."
+              )
+              sys.exit(1)
+
+          # Normalize optional URL form.
+          doi = re.sub(
+              r"^https?://(?:dx\.)?doi\.org/",
+              "",
+              doi,
+              flags=re.IGNORECASE,
+          )
+
+          if not re.fullmatch(
+              r"10\.5281/zenodo\.\d+",
+              doi,
+              flags=re.IGNORECASE,
+          ):
+              print(
+                  f"::error::CITATION.cff DOI is not a Zenodo DOI: {doi}"
+              )
+              sys.exit(1)
+
+          # -----------------------------
+          # Find README variants
+          # -----------------------------
+          readmes = sorted(
+              p for p in Path(".").glob("README*.md")
+              if p.is_file()
+          )
+
+          if not readmes:
+              print("::error::No README*.md files found.")
+              sys.exit(1)
+      
+          # Match the DOI used in the Zenodo DOI badge.
+          badge_re = re.compile(
+              r"\[!\[DOI\]\("
+              r"https://zenodo\.org/badge/[^)\s]+\.svg"
+              r"\)\]\("
+              r"https://doi\.org/(10\.5281/zenodo\.\d+)"
+              r"\)",
+              flags=re.IGNORECASE,
+          )
+          failed = False
+
+          for path in readmes:
+              text = path.read_text(encoding="utf-8")
+              badges = badge_re.findall(text)
+
+              if not badges:
+                  print(
+                      f"::error file={path}::No Zenodo DOI badge found."
+                  )
+                  failed = True
+                  continue
+      
+              unique_badges = {
+                  badge.lower() for badge in badges
+              }
+
+              if len(unique_badges) != 1:
+                  print(
+                      f"::error file={path}::Multiple different Zenodo "
+                      f"DOI badges found: {sorted(unique_badges)}"
+                  )
+                  failed = True
+                  continue
+
+              readme_doi = next(iter(unique_badges))
+
+              if readme_doi != doi.lower():
+                  print(
+                      f"::error file={path}::Zenodo DOI badge targets "
+                      f"{readme_doi}, but CITATION.cff specifies {doi}."
+                  )
+                  failed = True
+              else:
+                  print(f"{path}: DOI OK ({doi})")
+
+          if failed:
+              sys.exit(1)
+
+          print(
+              f"All {len(readmes)} README file(s) use the "
+              f"CITATION.cff DOI: {doi}"
+          )
+          PY
+
       - name: Validate CHANGELOG release entry
         if: steps.tag.outputs.releasable == 'true' && steps.tag.outputs.prep != 'true'
         shell: bash
@@ -255,119 +370,6 @@ jobs:
 
           print(
               f"CHANGELOG entry for {version} found on line {lineno}."
-          )
-          PY
-
-      - name: Validate Zenodo DOI in citation and READMEs
-        if: steps.tag.outputs.releasable == 'true' && steps.tag.outputs.prep != 'true'
-        shell: bash
-        run: |
-          python - <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          import yaml
-
-          # -----------------------------
-          # Read DOI from CITATION.cff
-          # -----------------------------
-          cff_path = Path("CITATION.cff")
-      
-          if not cff_path.is_file():
-              print("::error::CITATION.cff not found.")
-              sys.exit(1)
-
-          cff = yaml.safe_load(cff_path.read_text(encoding="utf-8"))
-
-          doi = str(cff.get("doi", "")).strip()
-
-          if not doi:
-              print(
-                  "::error::CITATION.cff must contain a DOI "
-                  "for every real release."
-              )
-              sys.exit(1)
-
-          # Normalize optional URL form.
-          doi = re.sub(
-              r"^https?://(?:dx\.)?doi\.org/",
-              "",
-              doi,
-              flags=re.IGNORECASE,
-          )
-
-          if not re.fullmatch(
-              r"10\.5281/zenodo\.\d+",
-              doi,
-              flags=re.IGNORECASE,
-          ):
-              print(
-                  f"::error::CITATION.cff DOI is not a Zenodo DOI: {doi}"
-              )
-              sys.exit(1)
-
-          # -----------------------------
-          # Find README variants
-          # -----------------------------
-          readmes = sorted(
-              p for p in Path(".").glob("README*.md")
-              if p.is_file()
-          )
-
-          if not readmes:
-              print("::error::No README*.md files found.")
-              sys.exit(1)
-      
-          # Match the DOI used in the Zenodo DOI badge.
-          badge_re = re.compile(
-              r"https://zenodo\.org/badge/DOI/"
-              r"(10\.5281/zenodo\.\d+)\.svg",
-              flags=re.IGNORECASE,
-          )
-
-          failed = False
-
-          for path in readmes:
-              text = path.read_text(encoding="utf-8")
-              badges = badge_re.findall(text)
-
-              if not badges:
-                  print(
-                      f"::error file={path}::No Zenodo DOI badge found."
-                  )
-                  failed = True
-                  continue
-      
-              unique_badges = {
-                  badge.lower() for badge in badges
-              }
-
-              if len(unique_badges) != 1:
-                  print(
-                      f"::error file={path}::Multiple different Zenodo "
-                      f"DOI badges found: {sorted(unique_badges)}"
-                  )
-                  failed = True
-                  continue
-
-              readme_doi = next(iter(unique_badges))
-
-              if readme_doi != doi.lower():
-                  print(
-                      f"::error file={path}::Zenodo DOI badge uses "
-                      f"{readme_doi}, but CITATION.cff specifies {doi}."
-                  )
-                  failed = True
-              else:
-                  print(f"{path}: DOI OK ({doi})")
-
-          if failed:
-              sys.exit(1)
-
-          print(
-              f"All {len(readmes)} README file(s) use the "
-              f"CITATION.cff DOI: {doi}"
           )
           PY
 
