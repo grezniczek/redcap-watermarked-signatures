@@ -6,7 +6,7 @@
       "affiliation": "Department of Gynecology and Obstetrics, Ruhr University Bochum, Marien Hospital Herne"
     }
   ],
-  "title": "Watermarked Signatures (REDCap External Module)",
+  "title": "WatermarkedX Signatures (REDCap External Module)",
   "description": "Watermarked Signatures is a REDCap External Module that adds a visible, context-bound watermark to newly captured REDCap signatures.",
   "access_right": "open",
   "keywords": [
