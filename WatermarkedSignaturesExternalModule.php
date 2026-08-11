@@ -1258,6 +1258,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         }
     }
 
+    /**
+     * @return array{available: bool, edoc_id: string, doc_name: ?string, width: ?int, height: ?int, contents: ?string, technical_message: ?string} 
+     */
     private function custom_background_image_details()
     {
         $edocId = $this->getProjectSetting("custom-background-image");
