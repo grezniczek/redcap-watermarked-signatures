@@ -1,6 +1,6 @@
 # Watermarked Signatures
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20555865.svg)](https://doi.org/10.5281/zenodo.20555865)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.xxx.svg)](https://doi.org/10.5281/zenodo.xxx)
 
 Watermarked Signatures is a REDCap External Module that adds a visible,
 context-bound watermark to newly captured REDCap signatures. It supports both

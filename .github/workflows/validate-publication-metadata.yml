@@ -14,6 +14,7 @@ jobs:
 
     outputs:
       releasable: ${{ steps.tag.outputs.releasable }}
+      prep: ${{ steps.tag.outputs.prep }}
       version: ${{ steps.tag.outputs.version }}
 
     steps:
@@ -24,12 +25,22 @@ jobs:
         id: tag
         shell: bash
         run: |
-          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ "$GITHUB_REF_NAME" == "vPrep" ]]; then
             echo "releasable=true" >> "$GITHUB_OUTPUT"
+            echo "prep=true" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "Zenodo preparatory release tag."
+
+          elif [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "releasable=true" >> "$GITHUB_OUTPUT"
+            echo "prep=false" >> "$GITHUB_OUTPUT"
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
             echo "Production release tag: $GITHUB_REF_NAME"
+
           else
             echo "releasable=false" >> "$GITHUB_OUTPUT"
+            echo "prep=false" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
             echo "Validation-only tag: $GITHUB_REF_NAME"
           fi
 
@@ -180,7 +191,7 @@ jobs:
           PY
 
       - name: Validate CHANGELOG release entry
-        if: steps.tag.outputs.releasable == 'true'
+        if: steps.tag.outputs.releasable == 'true' && steps.tag.outputs.prep != 'true'
         shell: bash
         env:
           VERSION: ${{ steps.tag.outputs.version }}
@@ -268,6 +279,7 @@ jobs:
         shell: bash
         env:
           VERSION: ${{ needs.validate.outputs.version }}
+          PREP: ${{ needs.validate.outputs.prep }}
         run: |
           python - <<'PY'
           import json
@@ -276,50 +288,55 @@ jobs:
           import sys
           from pathlib import Path
 
-          version = os.environ["VERSION"]
-          tag = f"v{version}"
-
           # REDCap EM name is authoritative.
           config = json.loads(
               Path("config.json").read_text(encoding="utf-8")
           )
           name = config["name"].strip()
 
-          # Extract release description from CHANGELOG.
-          matches = []
+          prep = os.environ["PREP"] == "true"
 
-          for line in Path("CHANGELOG.md").read_text(
-              encoding="utf-8"
-          ).splitlines():
+          if prep:
+              title = f"{name} vPrep"
+              description = """Preparatory release used solely to initialize the Zenodo record and obtain the version-independent Concept DOI. This is not a software release and should not be cited or used."""
+          else:
+              version = os.environ["VERSION"]
+              tag = f"v{version}"
 
-              m = re.match(
-                  r"^\s*\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$",
-                  line
-              )
+              # Extract release description from CHANGELOG.
+              matches = []
 
-              if not m:
-                  continue
+              for line in Path("CHANGELOG.md").read_text(
+                  encoding="utf-8"
+              ).splitlines():
 
-              row_version = m.group(1).strip().strip("`")
+                  m = re.match(
+                      r"^\s*\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$",
+                      line
+                  )
 
-              if row_version in (version, tag):
-                  matches.append(m.group(2).strip())
+                  if not m:
+                      continue
 
-          if len(matches) != 1:
-              print(
-                  f"::error::Expected exactly one CHANGELOG "
-                  f"entry for {version}."
-              )
-              sys.exit(1)
+                  row_version = m.group(1).strip().strip("`")
 
-          description = matches[0]
+                  if row_version in (version, tag):
+                      matches.append(m.group(2).strip())
+
+              if len(matches) != 1:
+                  print(
+                      f"::error::Expected exactly one CHANGELOG "
+                      f"entry for {version}."
+                  )
+                  sys.exit(1)
+
+              description = matches[0]
+              title = f"{name} {tag}"
 
           Path("release-notes.md").write_text(
               description + "\n",
               encoding="utf-8"
           )
-
-          title = f"{name} {tag}"
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"title={title}\n")
