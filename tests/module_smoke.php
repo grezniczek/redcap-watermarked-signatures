@@ -25,6 +25,11 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
             return $this->projectSettings[$key] ?? false;
         }
 
+        public function escape($value)
+        {
+            return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+        }
+
         public function log($message, $parameters = array())
         {
             if ($message === 'sigwm_upload' && $this->failUploadProvenanceLog) {
@@ -1096,7 +1101,11 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($failedModule->exitRequested, 'Missing envelopes do not fail closed.');
     moduleAssert($failedModule->logs[0][0] === 'sigwm_error_invalid_envelope', 'Missing envelope error was not logged.');
     moduleAssert(strpos($failureResponse, 'could not be securely watermarked') !== false, 'The upload failure response is missing.');
+    moduleAssert(strpos($failureResponse, 'stopUpload(0, "participant_signature"') !== false, 'The upload failure response did not emit a JSON-encoded field name.');
     moduleAssert(strpos($failureResponse, ", 3, true)") !== false, 'The failure response lost the repeat instance.');
+
+    $_POST = array('field_name' => 'participant_signature</script><script>alert(1)</script>-linknew');
+    moduleAssert(invokePrivate($failedModule, 'posted_field_name') === null, 'A hostile posted field name was accepted.');
 
     echo "Watermarked Signatures module smoke tests passed.\n";
 }

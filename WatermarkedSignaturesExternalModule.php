@@ -1069,7 +1069,10 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         }
 
         $message = $this->framework->tt('ui_upload_watermark_failed'); // The signature could not be securely watermarked. Please reopen the signature dialog and try again.
-        $fieldJson = json_encode($field);
+        $fieldJson = json_encode(
+            $this->escape($field),
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+        );
         $messageJson = json_encode($message);
         $instance = isset($_GET["instance"]) && is_numeric($_GET["instance"]) && (int) $_GET["instance"] > 0
             ? (int) $_GET["instance"]
