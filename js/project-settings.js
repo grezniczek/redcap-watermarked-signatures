@@ -12,16 +12,20 @@
     function init(module, config) {
         const form = document.getElementById('sigwm-project-settings-form');
         const imageInput = document.getElementById('sigwm-custom-image');
+        const customBackgroundMode = document.getElementById('sigwm-background-custom');
+        const imageThumbnail = document.getElementById('sigwm-custom-image-thumbnail');
+        const imageThumbnailContainer = document.getElementById('sigwm-custom-image-thumbnail-container');
         const watermarkPreview = document.getElementById('sigwm-watermark-preview');
         const previewImage = document.getElementById('sigwm-custom-image-preview');
         const previewEmpty = document.getElementById('sigwm-custom-image-preview-empty');
         const rotation = document.getElementById('sigwm-background-rotation');
         const rotationOutput = document.getElementById('sigwm-background-rotation-output');
+        const rotationReset = document.getElementById('sigwm-background-rotation-reset');
         const unsavedIndicator = document.getElementById('sigwm-settings-unsaved');
         const discardButton = document.getElementById('sigwm-settings-discard');
         const actionMessage = document.getElementById('sigwm-settings-action-message');
 
-        if (!form || !imageInput || !watermarkPreview || !previewImage || !previewEmpty || !rotation || !rotationOutput || !unsavedIndicator || !discardButton || !actionMessage || !module) {
+        if (!form || !imageInput || !customBackgroundMode || !imageThumbnail || !imageThumbnailContainer || !watermarkPreview || !previewImage || !previewEmpty || !rotation || !rotationOutput || !rotationReset || !unsavedIndicator || !discardButton || !actionMessage || !module) {
             return;
         }
 
@@ -38,6 +42,7 @@
         };
 
         const savedValues = config.savedValues || {};
+        let customImageAvailable = Boolean(config.hasCustomBackgroundImage);
         const getSelectedBackgroundMode = function () {
             const selected = form.querySelector('input[name="background_image_mode"]:checked');
             return selected ? selected.value : '';
@@ -162,6 +167,72 @@
 
         const hasLoadedImage = function (image) {
             return Boolean(image && image.complete && image.naturalWidth && image.naturalHeight);
+        };
+        const updateCustomImageAvailability = function () {
+            customImageAvailable = customImageAvailable || hasLoadedImage(previewImage);
+            customBackgroundMode.disabled = !customImageAvailable;
+            customBackgroundMode.setAttribute('aria-disabled', customImageAvailable ? 'false' : 'true');
+
+            if (customImageAvailable && previewImage.src) {
+                imageThumbnail.src = previewImage.src;
+                imageThumbnailContainer.hidden = false;
+            } else {
+                imageThumbnail.removeAttribute('src');
+                imageThumbnailContainer.hidden = true;
+            }
+        };
+        const initializeImageHelpPopover = function () {
+            const trigger = document.getElementById('sigwm-custom-image-help');
+            const content = document.getElementById('sigwm-custom-image-help-content');
+            if (!trigger || !content || !document.body) {
+                return;
+            }
+            const popover = document.createElement('div');
+            popover.id = 'sigwm-custom-image-help-popover';
+            popover.className = 'sigwm-settings-image-help-popover';
+            popover.setAttribute('role', 'tooltip');
+            popover.textContent = content.textContent;
+            popover.hidden = true;
+            document.body.appendChild(popover);
+            trigger.setAttribute('aria-controls', popover.id);
+
+            const positionPopover = function () {
+                const triggerBounds = trigger.getBoundingClientRect();
+                popover.style.left = Math.max(8, triggerBounds.left + window.scrollX) + 'px';
+                popover.style.top = triggerBounds.bottom + window.scrollY + 6 + 'px';
+            };
+            const showPopover = function () {
+                positionPopover();
+                popover.hidden = false;
+                trigger.setAttribute('aria-expanded', 'true');
+            };
+            const hidePopover = function () {
+                popover.hidden = true;
+                trigger.setAttribute('aria-expanded', 'false');
+            };
+
+            trigger.addEventListener('mouseenter', showPopover);
+            trigger.addEventListener('mouseleave', function () {
+                if (document.activeElement !== trigger) {
+                    hidePopover();
+                }
+            });
+            trigger.addEventListener('focus', showPopover);
+            trigger.addEventListener('blur', hidePopover);
+            trigger.addEventListener('click', showPopover);
+            trigger.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape') {
+                    hidePopover();
+                    trigger.blur();
+                }
+            });
+            document.addEventListener('mousedown', function (event) {
+                if (!trigger.contains(event.target) && !popover.contains(event.target)) {
+                    hidePopover();
+                }
+            });
+            window.addEventListener('resize', positionPopover);
+            window.addEventListener('scroll', positionPopover, true);
         };
         const fitPreviewText = function (context, value, maximumWidth) {
             if (context.measureText(value).width <= maximumWidth) {
@@ -316,8 +387,17 @@
             scheduleValidation();
         });
         rotation.addEventListener('input', updatePreview);
+        rotationReset.addEventListener('click', function () {
+            rotation.value = '0';
+            updateDirtyState();
+            updatePreview();
+            scheduleValidation();
+        });
         imageInput.addEventListener('change', refreshPreviewFromFile);
-        previewImage.addEventListener('load', updatePreview);
+        previewImage.addEventListener('load', function () {
+            updateCustomImageAvailability();
+            updatePreview();
+        });
         redcapLogo.addEventListener('load', updatePreview);
         if (config.redcapLogoUrl) {
             redcapLogo.src = config.redcapLogoUrl;
@@ -353,6 +433,8 @@
             }
         });
 
+        initializeImageHelpPopover();
+        updateCustomImageAvailability();
         updateDirtyState();
         updatePreview();
         logger.log('Initialized project settings page.');

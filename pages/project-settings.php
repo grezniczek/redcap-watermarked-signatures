@@ -85,6 +85,7 @@ if (!$saved && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
 $customImage = $settings['custom_image'];
 $previewUrl = $customImage['preview_data_url'];
+$customImageAvailable = $customImage['available'];
 $javascriptDebugSetting = $module->getProjectSetting('javascript-debug');
 $javascriptDebug = in_array($javascriptDebugSetting, array(true, 1, '1', 'true'), true);
 $redcapLogoUrl = defined('APP_PATH_WEBROOT')
@@ -99,6 +100,7 @@ $clientConfig = array(
     ),
     'validationAction' => \DE\RUB\WatermarkedSignaturesExternalModule\WatermarkedSignaturesExternalModule::AJAX_VALIDATE_PROJECT_SETTINGS,
     'maxCustomBackgroundImageUploadBytes' => \DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer::MAX_CUSTOM_BACKGROUND_IMAGE_UPLOAD_BYTES,
+    'hasCustomBackgroundImage' => $customImageAvailable,
     'debug' => $javascriptDebug,
     'redcapLogoUrl' => $redcapLogoUrl
 );
@@ -126,15 +128,23 @@ $module->framework->tt_transferToJavascriptModuleObject(array(
     .sigwm-settings-card { padding: .75rem; }
     .sigwm-settings fieldset { min-width: 0; }
     .sigwm-settings fieldset > legend,
-    .sigwm-settings-preview-heading { display: block; width: 100%; margin-bottom: .2rem; font-size: 1rem !important; font-weight: 600; }
+    .sigwm-settings-preview-heading,
+    .sigwm-settings-custom-image-heading { display: block; width: 100%; margin-bottom: .3rem; font-size: 1rem !important; font-weight: 600; }
+    .sigwm-settings-preview-heading { font-size: .9rem !important; font-weight: 600; margin-bottom: .5rem; }
     .sigwm-settings .form-label { margin-bottom: .15rem; font-size: .8125rem; }
     .sigwm-settings .form-text { max-width: 740px; margin-top: .2rem; font-size: .75rem; line-height: 1.25; }
     .sigwm-settings .form-check { min-height: 1.15rem; margin-bottom: .2rem; font-size: .8125rem; }
     .sigwm-settings .form-range { height: .8rem; }
     .sigwm-settings .invalid-feedback { margin-top: .2rem; font-size: .75rem; }
-    .sigwm-settings-preview { overflow: hidden; background: #f5f7f8; }
+    .sigwm-settings-background-options { min-width: 0; border: 1px solid #ced4da; border-radius: .25rem; padding: .5rem; }
+    .sigwm-settings-preview { max-width: 460px; overflow: hidden; background: #f5f7f8; }
     .sigwm-settings-preview canvas { display: block; width: 100%; max-width: 460px; height: auto; background: #fff; }
     .sigwm-settings-preview p { max-width: 460px; font-size: .75rem; }
+    .sigwm-settings-image-thumbnail { flex: 0 0 128px; width: 128px; height: 128px; overflow: hidden; border: 1px solid #ced4da; border-radius: .25rem; background: #f5f7f8; }
+    .sigwm-settings-image-thumbnail img { display: block; width: 128px; height: 128px; object-fit: contain; }
+    .sigwm-settings-image-help-button { min-width: auto; padding: 0; vertical-align: baseline; }
+    .sigwm-settings-image-help-popover { position: absolute; z-index: 1080; max-width: 320px; padding: .5rem .75rem; color: #212529; background: #fff; border: 1px solid rgba(0, 0, 0, .2); border-radius: .3rem; box-shadow: 0 .25rem .5rem rgba(0, 0, 0, .15); font-size: .75rem; line-height: 1.35; }
+    .sigwm-settings-rotation-reset { min-width: auto; margin-left: .35rem; padding: 0; vertical-align: baseline; font-size: .75rem; }
     .sigwm-settings-current-image { overflow-wrap: anywhere; font-size: .75rem; line-height: 1.25; }
     .sigwm-settings-actions { border-top: 1px solid #dee2e6; }
     .sigwm-settings-actions [hidden] { display: none !important; }
@@ -150,7 +160,7 @@ $module->framework->tt_transferToJavascriptModuleObject(array(
         <fieldset class="mb-3" data-settings-field="retention_days">
             <legend><?= $escape($module->framework->tt('settings_retention_heading')) /* Unbound upload retention */ ?></legend>
             <label for="sigwm-retention-days" class="form-label fw-semibold"><?= $escape($module->framework->tt('settings_retention_label')) /* Retain unbound upload provenance for days */ ?></label>
-            <input id="sigwm-retention-days" class="form-control form-control-sm<?= isset($fieldErrors['retention_days']) ? ' is-invalid' : '' ?>" type="number" name="retention_days" min="0" max="3650" step="1" required value="<?= $escape($formValues['retention_days']) ?>">
+            <input id="sigwm-retention-days" class="form-control form-control-sm<?= isset($fieldErrors['retention_days']) ? ' is-invalid' : '' ?>" type="number" name="retention_days" min="0" max="3650" step="1" required value="<?= $escape($formValues['retention_days']) ?>" style="max-width: 100px;">
             <div class="form-text"><?= $escape($module->framework->tt('settings_retention_help')) /* Enter 0 to retain unbound upload provenance indefinitely. Otherwise enter a whole number from 1 to 3650. */ ?></div>
             <div class="invalid-feedback d-block" data-settings-error="retention_days"<?= isset($fieldErrors['retention_days']) ? '' : ' hidden' ?>><?= isset($fieldErrors['retention_days']) ? $escape($errorMessages[$fieldErrors['retention_days']]) : '' ?></div>
         </fieldset>
@@ -158,35 +168,51 @@ $module->framework->tt_transferToJavascriptModuleObject(array(
         <fieldset class="mb-3" data-settings-field="public_project_reference">
             <legend><?= $escape($module->framework->tt('settings_public_reference_heading')) /* Public project reference */ ?></legend>
             <label for="sigwm-public-reference" class="form-label fw-semibold"><?= $escape($module->framework->tt('settings_public_reference_label')) /* Visible REF: value (optional) */ ?></label>
-            <input id="sigwm-public-reference" class="form-control form-control-sm<?= isset($fieldErrors['public_project_reference']) ? ' is-invalid' : '' ?>" type="text" name="public_project_reference" maxlength="30" value="<?= $escape($formValues['public_project_reference']) ?>">
+            <input id="sigwm-public-reference" class="form-control form-control-sm<?= isset($fieldErrors['public_project_reference']) ? ' is-invalid' : '' ?>" type="text" name="public_project_reference" maxlength="30" value="<?= $escape($formValues['public_project_reference']) ?>" style="max-width: 30em;">
             <div class="form-text"><?= $escape($module->framework->tt('settings_public_reference_help')) /* This value is printed on every future signature image. Use 1–30 ASCII letters, digits, spaces, periods, hyphens, underscores, or slashes. Do not use sensitive information. */ ?></div>
             <div class="invalid-feedback d-block" data-settings-error="public_project_reference"<?= isset($fieldErrors['public_project_reference']) ? '' : ' hidden' ?>><?= isset($fieldErrors['public_project_reference']) ? $escape($errorMessages[$fieldErrors['public_project_reference']]) : '' ?></div>
         </fieldset>
 
-        <fieldset class="mb-3" data-settings-field="background_image_mode">
+        <fieldset class="mb-3 sigwm-settings-background">
             <legend><?= $escape($module->framework->tt('settings_background_heading')) /* Signature background image */ ?></legend>
-            <p class="form-text mt-0 mb-1"><?= $escape($module->framework->tt('settings_background_help')) /* Choose the optional faint background. The identifier overlay and WM1 footer are always applied. */ ?></p>
-            <?php foreach (array(
-                'redcap' => $module->framework->tt('settings_background_mode_redcap'), // Use the REDCap logo
-                'custom' => $module->framework->tt('settings_background_mode_custom'), // Use the custom image
-                'none' => $module->framework->tt('settings_background_mode_none') // Do not use a background image
-            ) as $value => $label): ?>
-                <div class="form-check">
-                    <input id="sigwm-background-<?= $escape($value) ?>" class="form-check-input" type="radio" name="background_image_mode" value="<?= $escape($value) ?>"<?= $formValues['background_image_mode'] === $value ? ' checked' : '' ?>>
-                    <label class="form-check-label" for="sigwm-background-<?= $escape($value) ?>"><?= $escape($label) ?></label>
-                </div>
-            <?php endforeach; ?>
-            <div class="invalid-feedback d-block" data-settings-error="background_image_mode"<?= isset($fieldErrors['background_image_mode']) ? '' : ' hidden' ?>><?= isset($fieldErrors['background_image_mode']) ? $escape($errorMessages[$fieldErrors['background_image_mode']]) : '' ?></div>
-        </fieldset>
+            <p class="form-text mt-0 mb-3"><?= $escape($module->framework->tt('settings_background_help')) /* Choose the optional faint background. The identifier overlay and WM1 footer are always applied. */ ?></p>
+            <div class="row g-3">
+                <div class="col-md-6 d-flex flex-column">
+                    <div class="sigwm-settings-background-options" data-settings-field="background_image_mode">
+                        <div class="form-check">
+                            <input id="sigwm-background-redcap" class="form-check-input" type="radio" name="background_image_mode" value="redcap"<?= $formValues['background_image_mode'] === 'redcap' ? ' checked' : '' ?>>
+                            <label class="form-check-label" for="sigwm-background-redcap"><?= $escape($module->framework->tt('settings_background_mode_redcap')) /* Use the REDCap logo */ ?></label>
+                        </div>
+                        <div class="form-check">
+                            <input id="sigwm-background-custom" class="form-check-input" type="radio" name="background_image_mode" value="custom"<?= $formValues['background_image_mode'] === 'custom' ? ' checked' : '' ?><?= !$customImageAvailable ? ' disabled aria-disabled="true"' : '' ?>>
+                            <label class="form-check-label" for="sigwm-background-custom"><?= $escape($module->framework->tt('settings_background_mode_custom')) /* Use the custom image */ ?></label>
+                        </div>
+                        <div class="form-check">
+                            <input id="sigwm-background-none" class="form-check-input" type="radio" name="background_image_mode" value="none"<?= $formValues['background_image_mode'] === 'none' ? ' checked' : '' ?>>
+                            <label class="form-check-label" for="sigwm-background-none"><?= $escape($module->framework->tt('settings_background_mode_none')) /* Do not use a background image */ ?></label>
+                        </div>
+                        <div class="invalid-feedback d-block" data-settings-error="background_image_mode"<?= isset($fieldErrors['background_image_mode']) ? '' : ' hidden' ?>><?= isset($fieldErrors['background_image_mode']) ? $escape($errorMessages[$fieldErrors['background_image_mode']]) : '' ?></div>
+                    </div>
 
-        <div class="row g-3">
-            <div class="col-lg-6">
-                <fieldset class="h-100">
-                    <legend><?= $escape($module->framework->tt('settings_custom_image_heading')) /* Custom background image */ ?></legend>
+                    <section class="mt-3">
+                        <h2 class="sigwm-settings-preview-heading"><?= $escape($module->framework->tt('settings_preview_heading')) /* Preview */ ?></h2>
+                        <div id="sigwm-custom-image-preview-area" class="sigwm-settings-preview border rounded d-flex flex-column align-items-center justify-content-center p-2">
+                            <canvas id="sigwm-watermark-preview" width="460" height="158" aria-label="<?= $escape($module->framework->tt('settings_preview_heading')) /* Preview */ ?>"></canvas>
+                            <p id="sigwm-custom-image-preview-empty" class="text-muted text-center mb-0 mt-1"<?= $previewUrl === null ? '' : ' hidden' ?>><?= $escape($module->framework->tt('settings_preview_empty')) /* Choose a PNG to preview the custom image. */ ?></p>
+                        </div>
+                        <p class="form-text mb-0"><?= $escape($module->framework->tt('settings_preview_help')) /* This representative WM1 preview uses a dummy signature and identifier values. It updates when you change the background mode, image, or rotation; the final image uses the actual signature and capture values. */ ?></p>
+                    </section>
+                </div>
+                <div class="col-md-6">
+                    <section class="h-100">
+                        <h2 class="sigwm-settings-preview-heading"><?= $escape($module->framework->tt('settings_custom_image_heading')) /* Custom background image */ ?></h2>
                     <div data-settings-field="custom_background_image">
-                        <label for="sigwm-custom-image" class="form-label fw-semibold"><?= $escape($module->framework->tt('settings_custom_image_label')) /* Upload a replacement PNG (optional) */ ?></label>
                         <input id="sigwm-custom-image" class="form-control form-control-sm<?= isset($fieldErrors['custom_background_image']) ? ' is-invalid' : '' ?>" type="file" name="custom_background_image" accept="image/png,.png">
-                        <div class="form-text mb-2"><?= $escape($module->framework->tt('settings_custom_image_help')) /* A replacement image is normalized before storage to at most 512 pixels per side and 1 MiB. Upload PNG files up to 6 MiB; each side must be 16–4096 pixels and the image must contain no more than 12 million pixels. Very wide or tall images that cannot remain at least 16 pixels per side after normalization are rejected. The existing image is retained if you do not choose a replacement. */ ?></div>
+                        <div class="form-text mb-2">
+                            <?= $escape($module->framework->tt('settings_custom_image_help')) /* Maximum upload size: 6 MiB. Images larger than 512 px are scaled down. */ ?>
+                            <button id="sigwm-custom-image-help" type="button" class="btn btn-link btn-sm sigwm-settings-image-help-button" aria-label="<?= $escape($module->framework->tt('settings_custom_image_help_button')) /* Show custom image requirements */ ?>" aria-expanded="false"><i class="fa-solid fa-circle-info" aria-hidden="true"></i></button>
+                            <span id="sigwm-custom-image-help-content" hidden><?= $escape($module->framework->tt('settings_custom_image_help_details')) /* PNG dimensions must be 16–4096 px per side and no more than 12 million pixels. The stored image is limited to 1 MiB. Images that would be smaller than 16 px per side after scaling are rejected. The existing image is retained until you upload a replacement. */ ?></span>
+                        </div>
                         <div class="invalid-feedback d-block" data-settings-error="custom_background_image"<?= isset($fieldErrors['custom_background_image']) ? '' : ' hidden' ?>><?= isset($fieldErrors['custom_background_image']) ? $escape($errorMessages[$fieldErrors['custom_background_image']]) : '' ?></div>
                     </div>
 
@@ -194,33 +220,28 @@ $module->framework->tt_transferToJavascriptModuleObject(array(
                         <label for="sigwm-background-rotation" class="form-label fw-semibold mt-2"><?= $escape($module->framework->tt('settings_rotation_label')) /* Custom image rotation (degrees) */ ?></label>
                         <input id="sigwm-background-rotation" class="form-range<?= isset($fieldErrors['background_image_rotation']) ? ' is-invalid' : '' ?>" type="range" name="background_image_rotation" min="-180" max="180" step="1" value="<?= $escape($formValues['background_image_rotation']) ?>">
                         <output id="sigwm-background-rotation-output" class="d-inline-block"><code><?= $escape($formValues['background_image_rotation']) ?>°</code></output>
+                        <button id="sigwm-background-rotation-reset" type="button" class="btn btn-link btn-sm sigwm-settings-rotation-reset"><?= $escape($module->framework->tt('settings_rotation_reset')) /* Reset */ ?></button>
                         <div class="form-text mb-2"><?= $escape($module->framework->tt('settings_rotation_help')) /* Applies only when the custom image is selected. Positive values rotate counterclockwise. Allowed range: -180 to 180. */ ?></div>
                         <div class="invalid-feedback d-block" data-settings-error="background_image_rotation"<?= isset($fieldErrors['background_image_rotation']) ? '' : ' hidden' ?>><?= isset($fieldErrors['background_image_rotation']) ? $escape($errorMessages[$fieldErrors['background_image_rotation']]) : '' ?></div>
                     </div>
 
                     <div class="sigwm-settings-current-image mt-2">
-                        <span class="fw-semibold"><?= $escape($module->framework->tt('settings_current_image')) /* Current stored image */ ?>:</span>
-                        <?php if ($customImage['available']): ?>
-                            <code><?= $escape($customImage['doc_name']) ?> · <?= $escape($customImage['width']) ?>×<?= $escape($customImage['height']) ?> px · <?= $escape($customImage['sha256']) ?></code>
+                        <span class="fw-semibold"><?= $escape($module->framework->tt('settings_current_image')) /* Current stored image */ ?>:</span><br>
+                        <?php if ($customImageAvailable): ?>
+                            <code><?= $escape($customImage['doc_name']) ?> · <?= $escape($customImage['width']) ?>×<?= $escape($customImage['height']) ?> px</code>
                         <?php elseif ($customImage['edoc_id'] !== ''): ?>
                             <span class="text-danger"><?= $escape($module->framework->tt('settings_invalid_current_image')) /* A custom image setting exists but its stored file is unavailable or invalid. Upload a replacement before selecting the custom-image mode. */ ?></span>
                         <?php else: ?>
                             <span class="text-muted"><?= $escape($module->framework->tt('settings_no_current_image')) /* No valid custom image is currently stored. */ ?></span>
                         <?php endif; ?>
                     </div>
-                </fieldset>
-            </div>
-            <div class="col-lg-6">
-                <section class="h-100">
-                    <h2 class="sigwm-settings-preview-heading"><?= $escape($module->framework->tt('settings_preview_heading')) /* Preview */ ?></h2>
-                    <div id="sigwm-custom-image-preview-area" class="sigwm-settings-preview border rounded d-flex flex-column align-items-center justify-content-center p-2">
-                        <canvas id="sigwm-watermark-preview" width="460" height="158" aria-label="<?= $escape($module->framework->tt('settings_preview_heading')) /* Preview */ ?>"></canvas>
-                        <p id="sigwm-custom-image-preview-empty" class="text-muted text-center mb-0 mt-1"<?= $previewUrl === null ? '' : ' hidden' ?>><?= $escape($module->framework->tt('settings_preview_empty')) /* Choose a PNG to preview the custom image. */ ?></p>
+                    <div id="sigwm-custom-image-thumbnail-container" class="sigwm-settings-image-thumbnail mt-2"<?= $previewUrl === null ? ' hidden' : '' ?>>
+                        <img id="sigwm-custom-image-thumbnail"<?= $previewUrl === null ? '' : ' src="' . $escape($previewUrl) . '"' ?> alt="<?= $escape($module->framework->tt('settings_current_image_thumbnail_alt')) /* Current custom background image */ ?>">
                     </div>
-                    <p class="form-text mb-0"><?= $escape($module->framework->tt('settings_preview_help')) /* This representative WM1 preview uses a dummy signature and identifier values. It updates when you change the background mode, image, or rotation; the final image uses the actual signature and capture values. */ ?></p>
-                </section>
+                    </section>
+                </div>
             </div>
-        </div>
+        </fieldset>
 
         <div class="sigwm-settings-actions d-flex flex-wrap align-items-center gap-2 mt-3 pt-2">
             <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk me-1"></i><?= $escape($module->framework->tt('settings_save')) /* Save project settings */ ?></button>

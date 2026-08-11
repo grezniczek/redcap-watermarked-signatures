@@ -519,6 +519,7 @@ namespace {
             'background_image_rotation' => '-30'
         ), array(
             'error' => UPLOAD_ERR_OK,
+            'name' => 'department-seal.png',
             'size' => strlen($largeBackgroundPng),
             'tmp_name' => $temporaryUpload
         ));
@@ -534,6 +535,7 @@ namespace {
     moduleAssert($projectSettingsModule->projectSettings['background-image-rotation'] === '-30', 'Custom project settings did not persist the custom-image rotation.');
     $savedCustomImage = $savedSettings['state']['custom_image'];
     moduleAssert($savedCustomImage['available'] && $savedCustomImage['width'] === 512 && $savedCustomImage['height'] === 256, 'Custom project settings did not normalize the stored image to the 512px limit.');
+    moduleAssert($savedCustomImage['doc_name'] === 'department-seal.png', 'Custom project settings did not preserve the original custom-image filename.');
     moduleAssert(strpos($savedCustomImage['preview_data_url'], 'data:image/png;base64,') === 0, 'Custom project settings did not provide a safe preview data URL.');
     $savedImageBytes = Files::$attributes[(int) $savedCustomImage['edoc_id']][2];
     moduleAssert(strlen($savedImageBytes) <= Renderer::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES, 'Custom project settings stored an image above the final size limit.');

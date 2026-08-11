@@ -343,7 +343,11 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
             $newEdocId = $normalizedImage === null
                 ? null
-                : $this->store_normalized_custom_background_image($normalizedImage, $projectId);
+                : $this->store_normalized_custom_background_image(
+                    $normalizedImage,
+                    $this->custom_background_image_upload_name($uploadedFile),
+                    $projectId
+                );
             $this->framework->setProjectSetting("unbound-upload-retention-days", (string) $retentionDays, $projectId);
             $this->framework->setProjectSetting("public-project-reference", $projectReference, $projectId);
             $this->framework->setProjectSetting("background-image-mode", $backgroundMode, $projectId);
@@ -1441,7 +1445,19 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
         }
     }
 
-    private function store_normalized_custom_background_image($contents, $projectId)
+    private function custom_background_image_upload_name($uploadedFile)
+    {
+        $fallbackName = "watermarked-signature-background.png";
+        if (!is_array($uploadedFile) || !isset($uploadedFile["name"]) || !is_string($uploadedFile["name"])) {
+            return $fallbackName;
+        }
+
+        $name = basename(str_replace("\\", "/", $uploadedFile["name"]));
+        $name = trim((string) preg_replace('/[\x00-\x1F\x7F]/', "", $name));
+        return $name === "" ? $fallbackName : $name;
+    }
+
+    private function store_normalized_custom_background_image($contents, $fileName, $projectId)
     {
         $temporaryPath = tempnam(sys_get_temp_dir(), "sigwm-");
         if ($temporaryPath === false) {
@@ -1452,7 +1468,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
                 throw new \RuntimeException("Could not write the normalized custom background image.");
             }
             $edocId = \Files::uploadFile(array(
-                "name" => "watermarked-signature-background.png",
+                "name" => $fileName,
                 "tmp_name" => $temporaryPath,
                 "size" => strlen($contents)
             ), $projectId);

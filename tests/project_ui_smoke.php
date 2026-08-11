@@ -379,6 +379,11 @@ projectUiAssert(strpos($settingsPageSource, 'save_project_settings') !== false, 
 projectUiAssert(strpos($settingsPageSource, 'redcap_csrf_token') !== false, 'Project settings form is missing the REDCap CSRF token.');
 projectUiAssert(strpos($settingsPageSource, 'enctype="multipart/form-data"') !== false, 'Project settings form cannot upload custom images.');
 projectUiAssert(strpos($settingsPageSource, 'accept="image/png,.png"') !== false, 'Project settings form does not restrict custom uploads to PNG files.');
+projectUiAssert(strpos($settingsPageSource, 'sigwm-settings-background') !== false, 'Signature background settings are not grouped into one block.');
+projectUiAssert(strpos($settingsPageSource, 'col-md-6 d-flex flex-column') !== false, 'Signature background controls do not use the two-column layout.');
+projectUiAssert(strpos($settingsPageSource, 'sigwm-custom-image-thumbnail') !== false, 'Project settings page does not render the custom-image thumbnail.');
+projectUiAssert(strpos($settingsPageSource, 'sigwm-custom-image-help-content') !== false, 'Custom-image requirements are not available to the help popover.');
+projectUiAssert(($english['settings_custom_image_help'] ?? null) === 'Maximum upload size: 6 MiB. Images larger than 512 px are scaled down.', 'Custom-image upload help is not concise.');
 projectUiAssert(strpos($settingsPageSource, 'type="range"') !== false, 'Project settings form does not provide a rotation control.');
 projectUiAssert(strpos($settingsPageSource, "getUrl('js/ConsoleDebugLogger.js')") !== false, 'Project settings page does not load the configured debug logger.');
 projectUiAssert(strpos($settingsPageSource, "getUrl('js/project-settings.js')") !== false, 'Project settings page does not load its preview script.');
@@ -389,6 +394,10 @@ projectUiAssert(strpos($settingsPageSource, '$_POST[$field]') !== false, 'Projec
 projectUiAssert(strpos($settingsPageSource, 'initializeJavascriptModuleObject') !== false, 'Project settings page does not initialize the framework JavaScript module object.');
 projectUiAssert(strpos($settingsPageSource, 'tt_transferToJavascriptModuleObject') !== false, 'Project settings page does not transfer validation language strings to JavaScript.');
 projectUiAssert(strpos($settingsScriptSource, 'FileReader') !== false, 'Project settings preview does not load replacement images locally.');
+projectUiAssert(strpos($settingsScriptSource, 'customBackgroundMode.disabled') !== false, 'Project settings script does not disable the custom background mode without an image.');
+projectUiAssert(strpos($settingsScriptSource, 'updateCustomImageAvailability') !== false, 'Project settings script does not update custom-image availability.');
+projectUiAssert(strpos($settingsScriptSource, "trigger.addEventListener('mouseenter'") !== false && strpos($settingsScriptSource, "trigger.addEventListener('focus'") !== false, 'Custom-image help popover does not use standard browser events.');
+projectUiAssert(strpos($settingsPageSource, 'sigwm-background-rotation-reset') !== false && strpos($settingsScriptSource, "rotation.value = '0'") !== false, 'Project settings rotation cannot be reset to 0 degrees.');
 projectUiAssert(strpos($settingsPageSource, 'id="sigwm-watermark-preview" width="460" height="158"') !== false, 'Project settings page does not provide the 460px WM1 preview canvas.');
 projectUiAssert(strpos($settingsScriptSource, 'previewSignatureHeight = 120') !== false, 'Project settings preview does not model the signature-canvas height.');
 projectUiAssert(strpos($settingsScriptSource, 'previewFooterHeight = 38') !== false, 'Project settings preview does not model the WM1 footer height.');
