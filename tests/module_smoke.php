@@ -1,7 +1,7 @@
 <?php
 
-namespace ExternalModules {
-    class ExternalModules
+namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
+    class ExternalModulesStub
     {
         public static $username = null;
 
@@ -11,7 +11,7 @@ namespace ExternalModules {
         }
     }
 
-    class AbstractExternalModule
+    class AbstractExternalModuleStub
     {
         public $framework;
         public $logs = array();
@@ -37,7 +37,7 @@ namespace ExternalModules {
         public function query($sql, $parameters = array())
         {
             if (strpos($sql, 'GET_LOCK') !== false || strpos($sql, 'RELEASE_LOCK') !== false) {
-                return new \FakeModuleResult(array(1));
+                return new FakeModuleResult(array(1));
             }
             throw new \RuntimeException('Unexpected module query in smoke test.');
         }
@@ -48,26 +48,26 @@ namespace ExternalModules {
                 list($message, $record) = $parameters;
                 foreach ($this->logs as $index => $log) {
                     if ($log[0] === $message && (string) ($log[1]['record'] ?? '') === (string) $record) {
-                        return new \FakeModuleResult(array(
+                        return new FakeModuleResult(array(
                             'log_id' => $index + 1,
                             'record' => $log[1]['record']
                         ));
                     }
                 }
-                return new \FakeModuleResult(null);
+                return new FakeModuleResult(null);
             }
 
             list($message, $edocId) = $parameters;
             foreach ($this->logs as $index => $log) {
                 if ($log[0] === $message && (int) ($log[1]['edoc_id'] ?? 0) === (int) $edocId) {
-                    return new \FakeModuleResult(array(
+                    return new FakeModuleResult(array(
                         'log_id' => $index + 1,
                         'payload_json' => $log[1]['payload_json'],
                         'project_id' => 123
                     ));
                 }
             }
-            return new \FakeModuleResult(null);
+            return new FakeModuleResult(null);
         }
 
         public function exitAfterHook()
@@ -95,9 +95,7 @@ namespace ExternalModules {
             return null;
         }
     }
-}
 
-namespace {
     class FakeModuleResult
     {
         private $row;
@@ -306,6 +304,14 @@ namespace {
         }
     }
 
+    // The module invokes these REDCap and EM Framework classes by their global names.
+    class_alias(__NAMESPACE__ . '\\ExternalModulesStub', 'ExternalModules\\ExternalModules');
+    class_alias(__NAMESPACE__ . '\\AbstractExternalModuleStub', 'ExternalModules\\AbstractExternalModule');
+    class_alias(__NAMESPACE__ . '\\Design', 'Design');
+    class_alias(__NAMESPACE__ . '\\REDCap', 'REDCap');
+    class_alias(__NAMESPACE__ . '\\Files', 'Files');
+    class_alias(__NAMESPACE__ . '\\UserRights', 'UserRights');
+
     require_once __DIR__ . '/../WatermarkedSignaturesExternalModule.php';
 
     use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\Anchor;
@@ -314,6 +320,9 @@ namespace {
     use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
     use DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer;
     use DE\RUB\WatermarkedSignaturesExternalModule\WatermarkedSignaturesExternalModule;
+    use ReflectionMethod;
+    use ReflectionProperty;
+    use RuntimeException;
 
     function moduleAssert($condition, $message)
     {
@@ -423,7 +432,6 @@ namespace {
     ob_start();
     imagepng($image);
     $originalPng = ob_get_clean();
-    imagedestroy($image);
 
     $module = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($module, 'proj', new FakeProject());
@@ -444,7 +452,6 @@ namespace {
     ob_start();
     imagepng($backgroundSource);
     $customBackgroundPng = ob_get_clean();
-    imagedestroy($backgroundSource);
     Files::$info[99590] = array('project_id' => 123, 'mime_type' => 'image/png', 'doc_name' => 'watermark.png', 'doc_size' => strlen($customBackgroundPng));
     Files::$attributes[99590] = array('image/png', 'watermark.png', $customBackgroundPng);
 
@@ -508,7 +515,6 @@ namespace {
     ob_start();
     imagepng($largeBackground);
     $largeBackgroundPng = ob_get_clean();
-    imagedestroy($largeBackground);
     $temporaryUpload = tempnam(sys_get_temp_dir(), 'sigwm-test-');
     moduleAssert($temporaryUpload !== false && file_put_contents($temporaryUpload, $largeBackgroundPng) === strlen($largeBackgroundPng), 'Could not prepare a custom background image upload.');
     try {

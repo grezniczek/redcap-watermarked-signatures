@@ -1,5 +1,7 @@
 <?php
 
+namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests;
+
 require_once __DIR__ . '/../classes/Crypto/CanonicalJson.php';
 require_once __DIR__ . '/../classes/Crypto/BindingMac.php';
 require_once __DIR__ . '/../classes/Storage/LogRepository.php';
@@ -7,6 +9,7 @@ require_once __DIR__ . '/../classes/Storage/LogRepository.php';
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\BindingMac;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\CanonicalJson;
 use DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository;
+use RuntimeException;
 
 function retentionAssert($condition, $message)
 {

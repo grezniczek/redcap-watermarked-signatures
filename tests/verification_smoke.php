@@ -1,5 +1,7 @@
 <?php
 
+namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests;
+
 require_once __DIR__ . '/../classes/Crypto/Base32.php';
 require_once __DIR__ . '/../classes/Crypto/Base64Url.php';
 require_once __DIR__ . '/../classes/Crypto/CanonicalJson.php';
@@ -21,6 +23,7 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\RedcapCurrentValueReader;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\RedcapEdocReader;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\VerificationService;
+use RuntimeException;
 
 function verificationAssert($condition, $message)
 {
@@ -192,6 +195,10 @@ class Files
         return self::$attributes[$edocId] ?? false;
     }
 }
+
+// These adapters call REDCap's global static APIs.
+class_alias(__NAMESPACE__ . '\\REDCap', 'REDCap');
+class_alias(__NAMESPACE__ . '\\Files', 'Files');
 
 function verificationUpload($captureReference, $edocId, $bytes)
 {

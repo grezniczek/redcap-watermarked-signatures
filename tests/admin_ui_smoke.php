@@ -1,5 +1,7 @@
 <?php
 
+namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests;
+
 require_once __DIR__ . '/../classes/Crypto/Base32.php';
 require_once __DIR__ . '/../classes/Crypto/Base64Url.php';
 require_once __DIR__ . '/../classes/Crypto/ReferenceGenerator.php';
@@ -8,6 +10,7 @@ require_once __DIR__ . '/../classes/Verification/AdministratorVerificationContro
 
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController;
+use RuntimeException;
 
 if (!defined('APP_PATH_WEBROOT')) {
     define('APP_PATH_WEBROOT', '/redcap/');

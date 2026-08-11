@@ -1,5 +1,30 @@
 <?php
 
+namespace {
+    if (!defined('MYSQLI_STORE_RESULT')) {
+        define('MYSQLI_STORE_RESULT', 0);
+    }
+
+    // LogRepository deliberately calls REDCap's global database helper.
+    if (!function_exists('db_query_throw_on_error')) {
+        function db_query_throw_on_error($sql, $parameters = array(), $connection = null, $resultMode = MYSQLI_STORE_RESULT, $forcePrimary = false)
+        {
+            \DE\RUB\WatermarkedSignaturesExternalModule\Tests\bindingAssert($forcePrimary === true, 'Binding query did not force REDCap primary DB routing.');
+            $GLOBALS['bindingPrimaryQueryCount']++;
+            $module = $GLOBALS['bindingPrimaryModule'];
+            \DE\RUB\WatermarkedSignaturesExternalModule\Tests\bindingAssert($module !== null, 'Primary-query smoke test has no active module.');
+
+            if (strpos($sql, 'where message = ?') !== false) {
+                $GLOBALS['bindingPrimaryLogQueryCount']++;
+                return $module->queryLogs($sql, $parameters);
+            }
+            return $module->query($sql, $parameters);
+        }
+    }
+}
+
+namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
+
 require_once __DIR__ . '/../classes/Crypto/Base64Url.php';
 require_once __DIR__ . '/../classes/Crypto/CanonicalJson.php';
 require_once __DIR__ . '/../classes/Crypto/BindingMac.php';
@@ -9,6 +34,7 @@ require_once __DIR__ . '/../classes/Storage/LogRepository.php';
 use DE\RUB\WatermarkedSignaturesExternalModule\Context\SavedContext;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\BindingMac;
 use DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository;
+use RuntimeException;
 
 function bindingAssert($condition, $message)
 {
@@ -17,28 +43,9 @@ function bindingAssert($condition, $message)
     }
 }
 
-if (!defined('MYSQLI_STORE_RESULT')) {
-    define('MYSQLI_STORE_RESULT', 0);
-}
-
 $GLOBALS['bindingPrimaryModule'] = null;
 $GLOBALS['bindingPrimaryQueryCount'] = 0;
 $GLOBALS['bindingPrimaryLogQueryCount'] = 0;
-if (!function_exists('db_query_throw_on_error')) {
-    function db_query_throw_on_error($sql, $parameters = array(), $connection = null, $resultMode = MYSQLI_STORE_RESULT, $forcePrimary = false)
-    {
-        bindingAssert($forcePrimary === true, 'Binding query did not force REDCap primary DB routing.');
-        $GLOBALS['bindingPrimaryQueryCount']++;
-        $module = $GLOBALS['bindingPrimaryModule'];
-        bindingAssert($module !== null, 'Primary-query smoke test has no active module.');
-
-        if (strpos($sql, 'where message = ?') !== false) {
-            $GLOBALS['bindingPrimaryLogQueryCount']++;
-            return $module->queryLogs($sql, $parameters);
-        }
-        return $module->query($sql, $parameters);
-    }
-}
 
 class BindingTestProject
 {
@@ -276,3 +283,4 @@ try {
 bindingAssert($lockFailed, 'Binding continued after lock acquisition timed out.');
 
 echo "Watermarked Signatures binding smoke tests passed.\n";
+}

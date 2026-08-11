@@ -970,7 +970,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
         ob_start(function ($output) use ($module, &$recorded, &$responseFailureLogged, $fieldPattern, $provenance) {
             if (!$recorded && preg_match(
-                "/stopUpload\\(\\s*1\\s*,\\s*(['\"])${fieldPattern}\\1\\s*,\\s*(['\"])([1-9][0-9]*)\\2/",
+                "/stopUpload\\(\\s*1\\s*,\\s*(['\"]){$fieldPattern}\\1\\s*,\\s*(['\"])([1-9][0-9]*)\\2/",
                 $output,
                 $matches
             )) {

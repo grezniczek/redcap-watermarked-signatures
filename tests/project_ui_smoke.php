@@ -1,5 +1,7 @@
 <?php
 
+namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests;
+
 require_once __DIR__ . '/../classes/Crypto/Base32.php';
 require_once __DIR__ . '/../classes/Crypto/Base64Url.php';
 require_once __DIR__ . '/../classes/Crypto/ReferenceGenerator.php';
@@ -11,6 +13,7 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectAccessPolicy;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\RedcapFieldLink;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectVerificationController;
+use RuntimeException;
 
 if (!defined('APP_PATH_WEBROOT')) {
     define('APP_PATH_WEBROOT', '/redcap/');
@@ -41,6 +44,9 @@ class UserRights
         return $value < 128 ? $value === 0 : $value === 128;
     }
 }
+
+// ProjectAccessPolicy calls REDCap's global UserRights API.
+class_alias(__NAMESPACE__ . '\\UserRights', 'UserRights');
 
 function projectUiAssert($condition, $message)
 {

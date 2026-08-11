@@ -72,7 +72,6 @@ class Renderer
         $outputHeight = $height + self::FOOTER_HEIGHT;
         $canvas = imagecreatetruecolor($outputWidth, $outputHeight);
         if ($canvas === false) {
-            imagedestroy($source);
             throw new \RuntimeException('Could not allocate the watermark output image.');
         }
 
@@ -133,9 +132,6 @@ class Renderer
         $encoded = imagepng($canvas, null, 6);
         $output = ob_get_clean();
 
-        imagedestroy($canvas);
-        imagedestroy($source);
-
         if (!$encoded || !is_string($output) || $output === '') {
             throw new \RuntimeException('Could not encode the watermarked signature PNG.');
         }
@@ -175,8 +171,6 @@ class Renderer
         if ($image === false) {
             throw new \InvalidArgumentException('The custom background image PNG could not be decoded.');
         }
-        imagedestroy($image);
-
         return array('width' => $width, 'height' => $height);
     }
 
@@ -217,46 +211,41 @@ class Renderer
             throw new \InvalidArgumentException('The uploaded custom background image PNG could not be decoded.');
         }
 
-        try {
-            $scale = min(1, self::MAX_CUSTOM_BACKGROUND_IMAGE_DIMENSION / max($sourceWidth, $sourceHeight));
-            $targetWidth = (int) round($sourceWidth * $scale);
-            $targetHeight = (int) round($sourceHeight * $scale);
-            if ($targetWidth < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
-                || $targetHeight < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
-                throw new \InvalidArgumentException('The uploaded custom background image aspect ratio is not allowed.');
+        $scale = min(1, self::MAX_CUSTOM_BACKGROUND_IMAGE_DIMENSION / max($sourceWidth, $sourceHeight));
+        $targetWidth = (int) round($sourceWidth * $scale);
+        $targetHeight = (int) round($sourceHeight * $scale);
+        if ($targetWidth < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
+            || $targetHeight < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
+            throw new \InvalidArgumentException('The uploaded custom background image aspect ratio is not allowed.');
+        }
+
+        while (true) {
+            $normalized = self::resamplePngImage($source, $sourceWidth, $sourceHeight, $targetWidth, $targetHeight);
+            $output = self::encodePngImage($normalized);
+
+            if (strlen($output) <= self::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES) {
+                self::validateCustomBackgroundImage($output);
+                return $output;
             }
 
-            while (true) {
-                $normalized = self::resamplePngImage($source, $sourceWidth, $sourceHeight, $targetWidth, $targetHeight);
-                $output = self::encodePngImage($normalized);
-                imagedestroy($normalized);
-
-                if (strlen($output) <= self::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES) {
-                    self::validateCustomBackgroundImage($output);
-                    return $output;
-                }
-
-                $scale = sqrt((self::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES / strlen($output)) * 0.95);
-                $nextWidth = (int) floor($targetWidth * $scale);
-                $nextHeight = (int) floor($targetHeight * $scale);
-                if ($nextWidth < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
-                    || $nextHeight < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
-                    throw new \InvalidArgumentException('The custom background image could not be normalized within the file-size limit.');
-                }
-                if ($nextWidth >= $targetWidth && $targetWidth > self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
-                    $nextWidth = $targetWidth - 1;
-                }
-                if ($nextHeight >= $targetHeight && $targetHeight > self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
-                    $nextHeight = $targetHeight - 1;
-                }
-                if ($nextWidth === $targetWidth && $nextHeight === $targetHeight) {
-                    throw new \InvalidArgumentException('The custom background image could not be normalized within the file-size limit.');
-                }
-                $targetWidth = $nextWidth;
-                $targetHeight = $nextHeight;
+            $scale = sqrt((self::MAX_CUSTOM_BACKGROUND_IMAGE_BYTES / strlen($output)) * 0.95);
+            $nextWidth = (int) floor($targetWidth * $scale);
+            $nextHeight = (int) floor($targetHeight * $scale);
+            if ($nextWidth < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION
+                || $nextHeight < self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
+                throw new \InvalidArgumentException('The custom background image could not be normalized within the file-size limit.');
             }
-        } finally {
-            imagedestroy($source);
+            if ($nextWidth >= $targetWidth && $targetWidth > self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
+                $nextWidth = $targetWidth - 1;
+            }
+            if ($nextHeight >= $targetHeight && $targetHeight > self::MIN_CUSTOM_BACKGROUND_IMAGE_DIMENSION) {
+                $nextHeight = $targetHeight - 1;
+            }
+            if ($nextWidth === $targetWidth && $nextHeight === $targetHeight) {
+                throw new \InvalidArgumentException('The custom background image could not be normalized within the file-size limit.');
+            }
+            $targetWidth = $nextWidth;
+            $targetHeight = $nextHeight;
         }
     }
 
@@ -338,7 +327,6 @@ class Renderer
         $transparent = imagecolorallocatealpha($target, 255, 255, 255, 127);
         imagefilledrectangle($target, 0, 0, $targetWidth - 1, $targetHeight - 1, $transparent);
         if (!imagecopyresampled($target, $source, 0, 0, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight)) {
-            imagedestroy($target);
             throw new \RuntimeException('Could not normalize the custom background image.');
         }
         return $target;
@@ -394,7 +382,6 @@ class Renderer
         $logoHeight = max(1, (int) round($sourceHeight * $scale));
         $logo = imagecreatetruecolor($logoWidth, $logoHeight);
         if ($logo === false) {
-            imagedestroy($source);
             return;
         }
         imagealphablending($logo, false);
@@ -402,7 +389,6 @@ class Renderer
         $transparent = imagecolorallocatealpha($logo, 255, 255, 255, 127);
         imagefilledrectangle($logo, 0, 0, $logoWidth - 1, $logoHeight - 1, $transparent);
         imagecopyresampled($logo, $source, 0, 0, 0, 0, $logoWidth, $logoHeight, $sourceWidth, $sourceHeight);
-        imagedestroy($source);
         for ($y = 0; $y < $logoHeight; $y++) {
             for ($x = 0; $x < $logoWidth; $x++) {
                 $pixel = imagecolorat($logo, $x, $y);
@@ -421,7 +407,6 @@ class Renderer
         }
 
         $rotated = imagerotate($logo, $backgroundImage['rotation'], $transparent);
-        imagedestroy($logo);
         if ($rotated === false) {
             return;
         }
@@ -438,7 +423,6 @@ class Renderer
                 imagecopy($canvas, $rotated, $x, $y, 0, 0, $rotatedWidth, $rotatedHeight);
             }
         }
-        imagedestroy($rotated);
     }
 
     private static function fitText($value, $width, $font)

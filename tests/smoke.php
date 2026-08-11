@@ -1,5 +1,7 @@
 <?php
 
+namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests;
+
 require_once __DIR__ . '/../classes/Crypto/Base32.php';
 require_once __DIR__ . '/../classes/Crypto/Base64Url.php';
 require_once __DIR__ . '/../classes/Crypto/CanonicalJson.php';
@@ -13,6 +15,8 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\CanonicalJson;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\EnvelopeSigner;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
 use DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer;
+use RuntimeException;
+use Throwable;
 
 function assertTrue($condition, $message)
 {
@@ -55,7 +59,6 @@ function signaturePng($width, $height, $typed = false, $transparent = false)
     ob_start();
     imagepng($image);
     $png = ob_get_clean();
-    imagedestroy($image);
     return $png;
 }
 
@@ -242,7 +245,6 @@ if (extension_loaded('gd')) {
     ob_start();
     imagepng($blackImage);
     $blackPng = ob_get_clean();
-    imagedestroy($blackImage);
 
     $crossing = $renderer->renderBase64(
         base64_encode($blackPng),
@@ -264,7 +266,6 @@ if (extension_loaded('gd')) {
             }
         }
     }
-    imagedestroy($crossingImage);
     assertTrue($visibleCrossingPixels > 100, 'The overlay is not visibly distinguishable over black strokes.');
 
     $formatCases = array(
@@ -294,7 +295,6 @@ if (extension_loaded('gd')) {
             $caseImage = imagecreatefromstring($caseOutput);
             $sourceLeft = (int) floor(($caseInfo[0] - $sourceWidth) / 2);
             assertTrue((imagecolorat($caseImage, $sourceLeft + 1, 1) & 0xffffff) === 0xffffff, 'Transparent typed signature was not normalized onto white.');
-            imagedestroy($caseImage);
         }
     }
 
@@ -333,8 +333,6 @@ if (extension_loaded('gd')) {
             assertTrue($markedPixels > 10, "Repeated overlay did not reach tile {$regionX},{$regionY}.");
         }
     }
-    imagedestroy($tiledImage);
-
     assertThrows(function () use ($renderer, $png, $payload, $captureReference) {
         $renderer->renderBase64(
             base64_encode($png),
