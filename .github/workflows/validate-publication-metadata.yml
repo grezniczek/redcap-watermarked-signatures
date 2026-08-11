@@ -1,4 +1,4 @@
-name: Validate publication metadata
+name: Validate and publish release
 
 on:
   push:
@@ -12,9 +12,26 @@ jobs:
   validate:
     runs-on: ubuntu-latest
 
+    outputs:
+      releasable: ${{ steps.tag.outputs.releasable }}
+      version: ${{ steps.tag.outputs.version }}
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+
+      - name: Classify tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "releasable=true" >> "$GITHUB_OUTPUT"
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "Production release tag: $GITHUB_REF_NAME"
+          else
+            echo "releasable=false" >> "$GITHUB_OUTPUT"
+            echo "Validation-only tag: $GITHUB_REF_NAME"
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -161,3 +178,165 @@ jobs:
 
           print("Publication metadata checks passed.")
           PY
+
+      - name: Validate CHANGELOG release entry
+        if: steps.tag.outputs.releasable == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          path = Path("CHANGELOG.md")
+
+          if not path.is_file():
+              print("::error::CHANGELOG.md not found.")
+              sys.exit(1)
+
+          matches = []
+
+          for lineno, line in enumerate(
+              path.read_text(encoding="utf-8").splitlines(), 1
+          ):
+              # Expected Markdown table:
+              # | version | description |
+              m = re.match(
+                  r"^\s*\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$",
+                  line
+              )
+
+              if not m:
+                  continue
+
+              row_version = m.group(1).strip().strip("`")
+              description = m.group(2).strip()
+
+              if row_version in (version, f"v{version}"):
+                  matches.append((lineno, description))
+
+          if not matches:
+              print(
+                  f"::error::CHANGELOG.md has no entry for version {version}."
+              )
+              sys.exit(1)
+
+          if len(matches) > 1:
+              lines = ", ".join(str(x[0]) for x in matches)
+              print(
+                  f"::error::CHANGELOG.md contains multiple entries "
+                  f"for version {version} (lines {lines})."
+              )
+              sys.exit(1)
+
+          lineno, description = matches[0]
+
+          if not description:
+              print(
+                  f"::error::CHANGELOG entry for {version} "
+                  f"has an empty description."
+              )
+              sys.exit(1)
+
+          print(
+              f"CHANGELOG entry for {version} found on line {lineno}."
+          )
+          PY
+
+  release:
+    name: Create GitHub release
+
+    needs: validate
+
+    if: needs.validate.outputs.releasable == 'true'
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out tagged release
+        uses: actions/checkout@v7
+
+      - name: Extract release information
+        id: release_info
+        shell: bash
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          tag = f"v{version}"
+
+          # REDCap EM name is authoritative.
+          config = json.loads(
+              Path("config.json").read_text(encoding="utf-8")
+          )
+          name = config["name"].strip()
+
+          # Extract release description from CHANGELOG.
+          matches = []
+
+          for line in Path("CHANGELOG.md").read_text(
+              encoding="utf-8"
+          ).splitlines():
+
+              m = re.match(
+                  r"^\s*\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|\s*$",
+                  line
+              )
+
+              if not m:
+                  continue
+
+              row_version = m.group(1).strip().strip("`")
+
+              if row_version in (version, tag):
+                  matches.append(m.group(2).strip())
+
+          if len(matches) != 1:
+              print(
+                  f"::error::Expected exactly one CHANGELOG "
+                  f"entry for {version}."
+              )
+              sys.exit(1)
+
+          description = matches[0]
+
+          Path("release-notes.md").write_text(
+              description + "\n",
+              encoding="utf-8"
+          )
+
+          title = f"{name} {tag}"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"title={title}\n")
+
+          print(f"Release title: {title}")
+          print("Release notes:")
+          print(description)
+          PY
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TITLE: ${{ steps.release_info.outputs.title }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "$RELEASE_TITLE" \
+            --notes-file release-notes.md
+
