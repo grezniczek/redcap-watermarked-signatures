@@ -7,50 +7,62 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Crypto;
  */
 class CanonicalJson
 {
-    public static function encode($value)
-    {
-        $normalized = self::normalize($value);
-        $flags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
+	/**
+	 * @param mixed $value JSON-serializable value.
+	 * @return string Deterministic JSON representation.
+	 */
+	public static function encode($value)
+	{
+		$normalized = self::normalize($value);
+		$flags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE;
 
-        if (defined('JSON_THROW_ON_ERROR')) {
-            return json_encode($normalized, $flags | JSON_THROW_ON_ERROR);
-        }
+		if (defined('JSON_THROW_ON_ERROR')) {
+			return json_encode($normalized, $flags | JSON_THROW_ON_ERROR);
+		}
 
-        $json = json_encode($normalized, $flags);
-        if ($json === false) {
-            throw new \RuntimeException('Could not encode canonical JSON: ' . json_last_error_msg());
-        }
+		$json = json_encode($normalized, $flags);
+		if ($json === false) {
+			throw new \RuntimeException('Could not encode canonical JSON: ' . json_last_error_msg());
+		}
 
-        return $json;
-    }
+		return $json;
+	}
 
-    private static function normalize($value)
-    {
-        if (!is_array($value)) {
-            return $value;
-        }
+	/**
+	 * @param mixed $value
+	 * @return mixed Value with associative-array keys recursively sorted.
+	 */
+	private static function normalize($value)
+	{
+		if (!is_array($value)) {
+			return $value;
+		}
 
-        if (self::isList($value)) {
-            return array_map(array(__CLASS__, 'normalize'), $value);
-        }
+		if (self::isList($value)) {
+			return array_map(array(__CLASS__, 'normalize'), $value);
+		}
 
-        ksort($value, SORT_STRING);
-        foreach ($value as $key => $item) {
-            $value[$key] = self::normalize($item);
-        }
+		ksort($value, SORT_STRING);
+		foreach ($value as $key => $item) {
+			$value[$key] = self::normalize($item);
+		}
 
-        return $value;
-    }
+		return $value;
+	}
 
-    private static function isList($value)
-    {
-        $expected = 0;
-        foreach ($value as $key => $_) {
-            if ($key !== $expected) {
-                return false;
-            }
-            $expected++;
-        }
-        return true;
-    }
+	/**
+	 * @param array<int|string, mixed> $value
+	 * @return bool Whether keys form a zero-based sequential list.
+	 */
+	private static function isList($value)
+	{
+		$expected = 0;
+		foreach ($value as $key => $_) {
+			if ($key !== $expected) {
+				return false;
+			}
+			$expected++;
+		}
+		return true;
+	}
 }
