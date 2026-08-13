@@ -7,13 +7,6 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Context;
  */
 class SavedContext
 {
-	/**
-	 * REDCap's project metadata object.
-	 *
-	 * @var \Project
-	 */
-	private $project;
-
 	/** @var int */
 	private $projectId;
 
@@ -43,7 +36,6 @@ class SavedContext
 	 */
 	public function __construct($project, $projectId, $recordId, $instrument, $eventId, $repeatInstance)
 	{
-		$this->project = $project;
 		$this->projectId = (int) $projectId;
 		$this->recordId = (string) $recordId;
 		$this->instrument = (string) $instrument;
