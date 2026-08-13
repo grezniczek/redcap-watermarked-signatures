@@ -222,3 +222,11 @@ field clear; a failed result should be treated as an integrity issue.
 ## Release history
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and notable changes.
+
+## AI assistance
+
+Development of this project has made extensive use of AI assistance. AI tools, primarily ChatGPT by OpenAI, have been used throughout the development process, including for discussion and refinement of design and architecture, implementation and refactoring of code, debugging and review, and preparation and revision of documentation.
+
+The extent and nature of this assistance vary across the project and are not attributed to individual commits. AI-generated suggestions and contributions are reviewed, adapted, and integrated as part of the normal development process.
+
+Responsibility for the design, implementation, maintenance, and released software remains entirely with the project maintainer.
