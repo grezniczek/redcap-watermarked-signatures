@@ -382,12 +382,22 @@ projectUiAssert(strpos($pageSource, "result.remove()") !== false, 'Verification 
 projectUiAssert(strpos($pageSource, 'Go to field') !== false, 'Verification details do not include a field-navigation link.');
 projectUiAssert(strpos($settingsPageSource, 'get_project_settings_state') !== false, 'Project settings page does not retrieve the saved settings.');
 projectUiAssert(strpos($settingsPageSource, 'save_project_settings') !== false, 'Project settings page does not save through the module API.');
+projectUiAssert(strpos($settingsPageSource, "header('Location: '") !== false && strpos($settingsPageSource, 'true, 303') !== false, 'Project settings page does not redirect after a successful save.');
+projectUiAssert(strpos($settingsPageSource, 'sigwm_settings_saved') !== false, 'Project settings page does not preserve its success message after redirecting.');
 projectUiAssert(strpos($settingsPageSource, 'redcap_csrf_token') !== false, 'Project settings form is missing the REDCap CSRF token.');
 projectUiAssert(strpos($settingsPageSource, 'enctype="multipart/form-data"') !== false, 'Project settings form cannot upload custom images.');
 projectUiAssert(strpos($settingsPageSource, 'accept="image/png,.png"') !== false, 'Project settings form does not restrict custom uploads to PNG files.');
 projectUiAssert(strpos($settingsPageSource, 'sigwm-settings-background') !== false, 'Signature background settings are not grouped into one block.');
 projectUiAssert(strpos($settingsPageSource, 'col-md-6 d-flex flex-column') !== false, 'Signature background controls do not use the two-column layout.');
 projectUiAssert(strpos($settingsPageSource, 'sigwm-custom-image-thumbnail') !== false, 'Project settings page does not render the custom-image thumbnail.');
+projectUiAssert(strpos($settingsPageSource, 'sigwm-remove-custom-image') !== false, 'Project settings page does not provide a custom-image removal control.');
+projectUiAssert(strpos($settingsPageSource, 'sigwm-custom-image-trigger') !== false, 'Project settings page does not provide an add-or-replace image action.');
+projectUiAssert(strpos($settingsPageSource, 'visually-hidden') !== false, 'Project settings page still exposes the native file input.');
+projectUiAssert(strpos($settingsPageSource, 'sigwm-settings-image-removal-pending') !== false, 'Project settings page does not visibly mark an image pending removal.');
+projectUiAssert(strpos($settingsScriptSource, 'settings_selected_image') !== false, 'Project settings page does not identify a selected replacement image before saving.');
+projectUiAssert(strpos($settingsScriptSource, "imageTrigger.addEventListener('click'") !== false, 'Project settings page does not open the hidden image chooser from its action.');
+projectUiAssert(strpos($settingsScriptSource, 'remove_custom_background_image') !== false, 'Project settings script does not submit the custom-image removal request.');
+projectUiAssert(strpos($settingsScriptSource, 'removeCustomImage && removeCustomImage.checked && !hasPendingCustomImage()') === false, 'Project settings script lets a selected replacement override an explicit removal.');
 projectUiAssert(strpos($settingsPageSource, 'sigwm-custom-image-help-content') !== false, 'Custom-image requirements are not available to the help popover.');
 projectUiAssert(($english['settings_custom_image_help'] ?? null) === 'Maximum upload size: 6 MiB. Images larger than 512 px are scaled down.', 'Custom-image upload help is not concise.');
 projectUiAssert(strpos($settingsPageSource, 'type="range"') !== false, 'Project settings form does not provide a rotation control.');
@@ -395,6 +405,8 @@ projectUiAssert(strpos($settingsPageSource, "getUrl('js/ConsoleDebugLogger.js')"
 projectUiAssert(strpos($settingsPageSource, "getUrl('js/project-settings.js')") !== false, 'Project settings page does not load its preview script.');
 projectUiAssert(strpos($settingsPageSource, 'form-control-sm') !== false, 'Project settings form does not use compact Bootstrap controls.');
 projectUiAssert(strpos($settingsPageSource, 'settings_unsaved_changes') !== false, 'Project settings page does not render an unsaved-changes indicator.');
+projectUiAssert(strpos($settingsPageSource, 'id="sigwm-settings-save"') !== false && strpos($settingsScriptSource, 'saveButton.disabled = !isDirty') !== false, 'Project settings page does not disable saving when no changes are pending.');
+projectUiAssert(strpos($settingsPageSource, 'id="sigwm-settings-saved"') !== false && strpos($settingsScriptSource, 'savedMessage.hidden = true') !== false, 'Project settings page does not clear its save confirmation after a new change.');
 projectUiAssert(strpos($settingsPageSource, 'settings_discard') !== false, 'Project settings page does not render a discard-changes action.');
 projectUiAssert(strpos($settingsPageSource, '$_POST[$field]') !== false, 'Project settings page does not retain editable values after a failed save.');
 projectUiAssert(strpos($settingsPageSource, 'initializeJavascriptModuleObject') !== false, 'Project settings page does not initialize the framework JavaScript module object.');
@@ -414,6 +426,6 @@ projectUiAssert(strpos($settingsScriptSource, 'redcapLogoUrl') !== false, 'Proje
 projectUiAssert(strpos($settingsScriptSource, 'module.ajax(config.validationAction, payload)') !== false, 'Project settings changes are not validated through the framework AJAX API.');
 projectUiAssert(strpos($settingsScriptSource, 'ConsoleDebugLogger') !== false, 'Project settings script does not honor the browser-debug setting.');
 projectUiAssert(strpos($settingsScriptSource, "window.addEventListener('beforeunload'") !== false, 'Project settings page does not guard against losing unsaved changes.');
-projectUiAssert(strpos($settingsScriptSource, 'window.location.reload()') !== false, 'Project settings discard action does not reload the saved values.');
+projectUiAssert(strpos($settingsScriptSource, "discardUrl.searchParams.delete('sigwm_settings_saved')") !== false && strpos($settingsScriptSource, 'window.location.replace(discardUrl.toString())') !== false, 'Project settings discard action does not clear the saved confirmation before restoring saved values.');
 
 echo "Watermarked Signatures project UI smoke tests passed.\n";

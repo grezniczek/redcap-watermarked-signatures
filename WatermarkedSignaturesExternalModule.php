@@ -385,7 +385,11 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		$this->init_proj($projectId);
 		$this->init_config();
 
-		$errors = $this->project_settings_validation_errors($input, $hasPendingCustomImage);
+		$errors = $this->project_settings_validation_errors(
+			$input,
+			$hasPendingCustomImage && !$this->remove_custom_background_image_requested($input),
+			$this->remove_custom_background_image_requested($input)
+		);
 		return array(
 			"ok" => empty($errors),
 			"errors" => $errors
@@ -408,9 +412,13 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		}
 
 		try {
+			$hasPendingCustomImage = $this->has_pending_custom_background_image($uploadedFile);
+			// An explicit removal wins over a file selected earlier in the same form.
+			$removeCustomImage = $this->remove_custom_background_image_requested($input);
 			$validationErrors = $this->project_settings_validation_errors(
 				$input,
-				$this->has_pending_custom_background_image($uploadedFile)
+				$hasPendingCustomImage && !$removeCustomImage,
+				$removeCustomImage
 			);
 			if (!empty($validationErrors)) {
 				throw new \InvalidArgumentException(reset($validationErrors));
@@ -419,7 +427,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			$projectReference = $this->validate_project_settings_public_reference($input["public_project_reference"] ?? null);
 			$backgroundMode = (string) $input["background_image_mode"];
 			$backgroundRotation = $this->validate_background_image_rotation($input["background_image_rotation"] ?? null);
-			$normalizedImage = $this->normalized_uploaded_custom_background_image($uploadedFile);
+			$normalizedImage = $removeCustomImage
+				? null
+				: $this->normalized_uploaded_custom_background_image($uploadedFile);
 
 			$newEdocId = $normalizedImage === null
 				? null
@@ -434,6 +444,8 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			$this->framework->setProjectSetting("background-image-rotation", (string) $backgroundRotation, $projectId);
 			if ($newEdocId !== null) {
 				$this->framework->setProjectSetting("custom-background-image", (string) $newEdocId, $projectId);
+			} elseif ($removeCustomImage) {
+				$this->framework->removeProjectSetting("custom-background-image", $projectId);
 			}
 
 			return array("ok" => true, "error_key" => null, "state" => $this->get_project_settings_state($projectId));
@@ -1655,9 +1667,10 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	/**
 	 * @param array<string,mixed>|mixed $input
 	 * @param bool $hasPendingCustomImage
+	 * @param bool $removeCustomImage
 	 * @return array<string,string>
 	 */
-	private function project_settings_validation_errors($input, $hasPendingCustomImage)
+	private function project_settings_validation_errors($input, $hasPendingCustomImage, $removeCustomImage = false)
 	{
 		if (!is_array($input)) {
 			return array("form" => "settings_error_invalid_request");
@@ -1687,11 +1700,23 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 		if ($backgroundMode === self::BACKGROUND_IMAGE_CUSTOM && !$hasPendingCustomImage) {
 			$existingImage = $this->custom_background_image_details();
-			if (!$existingImage["available"]) {
+			if ($removeCustomImage || !$existingImage["available"]) {
 				$errors["custom_background_image"] = "settings_error_custom_image_required";
 			}
 		}
 		return $errors;
+	}
+
+	/**
+	 * @param array<string, mixed> $input
+	 * @return bool
+	 */
+	private function remove_custom_background_image_requested($input)
+	{
+		if (!is_array($input)) {
+			return false;
+		}
+		return in_array($input["remove_custom_background_image"] ?? null, array(true, 1, "1", "true", "on"), true);
 	}
 
 	/**

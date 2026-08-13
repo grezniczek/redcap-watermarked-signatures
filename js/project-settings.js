@@ -12,9 +12,13 @@
     function init(module, config) {
         const form = document.getElementById('sigwm-project-settings-form');
         const imageInput = document.getElementById('sigwm-custom-image');
+        const imageTrigger = document.getElementById('sigwm-custom-image-trigger');
         const customBackgroundMode = document.getElementById('sigwm-background-custom');
         const imageThumbnail = document.getElementById('sigwm-custom-image-thumbnail');
         const imageThumbnailContainer = document.getElementById('sigwm-custom-image-thumbnail-container');
+        const removeCustomImage = document.getElementById('sigwm-remove-custom-image');
+        const currentImageLabel = document.getElementById('sigwm-current-image-label');
+        const currentImageDetails = document.getElementById('sigwm-current-image-details');
         const watermarkPreview = document.getElementById('sigwm-watermark-preview');
         const previewImage = document.getElementById('sigwm-custom-image-preview');
         const previewEmpty = document.getElementById('sigwm-custom-image-preview-empty');
@@ -22,10 +26,12 @@
         const rotationOutput = document.getElementById('sigwm-background-rotation-output');
         const rotationReset = document.getElementById('sigwm-background-rotation-reset');
         const unsavedIndicator = document.getElementById('sigwm-settings-unsaved');
+        const saveButton = document.getElementById('sigwm-settings-save');
         const discardButton = document.getElementById('sigwm-settings-discard');
         const actionMessage = document.getElementById('sigwm-settings-action-message');
+        const savedMessage = document.getElementById('sigwm-settings-saved');
 
-        if (!form || !imageInput || !customBackgroundMode || !imageThumbnail || !imageThumbnailContainer || !watermarkPreview || !previewImage || !previewEmpty || !rotation || !rotationOutput || !rotationReset || !unsavedIndicator || !discardButton || !actionMessage || !module) {
+        if (!form || !imageInput || !imageTrigger || !customBackgroundMode || !imageThumbnail || !imageThumbnailContainer || !currentImageLabel || !currentImageDetails || !watermarkPreview || !previewImage || !previewEmpty || !rotation || !rotationOutput || !rotationReset || !unsavedIndicator || !saveButton || !discardButton || !actionMessage || !module) {
             return;
         }
 
@@ -42,6 +48,8 @@
         };
 
         const savedValues = config.savedValues || {};
+        const initialImageLabel = currentImageLabel.textContent;
+        const initialImageDetails = currentImageDetails.textContent;
         let customImageAvailable = Boolean(config.hasCustomBackgroundImage);
         const getSelectedBackgroundMode = function () {
             const selected = form.querySelector('input[name="background_image_mode"]:checked');
@@ -63,6 +71,7 @@
         const hasUnsavedChanges = function () {
             const currentValues = getCurrentValues();
             return hasPendingCustomImage()
+                || Boolean(removeCustomImage && removeCustomImage.checked)
                 || Object.keys(currentValues).some(function (key) {
                     return String(currentValues[key]) !== String(savedValues[key] || '');
                 });
@@ -70,7 +79,11 @@
         const updateDirtyState = function () {
             const isDirty = hasUnsavedChanges();
             unsavedIndicator.hidden = !isDirty;
+            saveButton.disabled = !isDirty;
             discardButton.disabled = !isDirty;
+            if (isDirty && savedMessage) {
+                savedMessage.hidden = true;
+            }
             return isDirty;
         };
 
@@ -132,6 +145,7 @@
             const localImageError = getLocalImageError();
             const payload = getCurrentValues();
             payload.has_pending_custom_image = hasPendingCustomImage();
+            payload.remove_custom_background_image = Boolean(removeCustomImage && removeCustomImage.checked);
 
             return module.ajax(config.validationAction, payload).then(function (response) {
                 if (requestSequence !== validationSequence) {
@@ -169,11 +183,27 @@
             return Boolean(image && image.complete && image.naturalWidth && image.naturalHeight);
         };
         const updateCustomImageAvailability = function () {
-            customImageAvailable = customImageAvailable || hasLoadedImage(previewImage);
+            const hasRequestedRemoval = Boolean(removeCustomImage && removeCustomImage.checked);
+            customImageAvailable = Boolean(((config.hasCustomBackgroundImage || hasPendingCustomImage()) && !hasRequestedRemoval));
             customBackgroundMode.disabled = !customImageAvailable;
             customBackgroundMode.setAttribute('aria-disabled', customImageAvailable ? 'false' : 'true');
 
-            if (customImageAvailable && previewImage.src) {
+            if (hasRequestedRemoval) {
+                currentImageLabel.textContent = translate('settings_removing_image') + ':';
+                currentImageDetails.textContent = translate('settings_removing_image_details');
+            } else if (hasPendingCustomImage()) {
+                const file = imageInput.files[0];
+                currentImageLabel.textContent = translate('settings_selected_image') + ':';
+                currentImageDetails.textContent = file.name + ' · ' + translate('settings_selected_image_pending');
+            } else {
+                currentImageLabel.textContent = initialImageLabel;
+                currentImageDetails.textContent = initialImageDetails;
+            }
+
+            imageTrigger.hidden = hasRequestedRemoval;
+            imageTrigger.textContent = translate(customImageAvailable ? 'settings_replace_custom_image' : 'settings_add_custom_image');
+            imageThumbnailContainer.classList.toggle('sigwm-settings-image-removal-pending', hasRequestedRemoval);
+            if (hasLoadedImage(previewImage)) {
                 imageThumbnail.src = previewImage.src;
                 imageThumbnailContainer.hidden = false;
             } else {
@@ -370,6 +400,10 @@
             if (!file) {
                 return;
             }
+            if (removeCustomImage) {
+                removeCustomImage.checked = false;
+            }
+            updateCustomImageAvailability();
             const reader = new FileReader();
             reader.addEventListener('load', function () {
                 previewImage.src = reader.result;
@@ -394,6 +428,23 @@
             scheduleValidation();
         });
         imageInput.addEventListener('change', refreshPreviewFromFile);
+        imageTrigger.addEventListener('click', function () {
+            imageInput.click();
+        });
+        if (removeCustomImage) {
+            removeCustomImage.addEventListener('change', function () {
+                if (removeCustomImage.checked && getSelectedBackgroundMode() === 'custom') {
+                    const fallbackMode = document.getElementById('sigwm-background-redcap');
+                    if (fallbackMode) {
+                        fallbackMode.checked = true;
+                    }
+                }
+                updateCustomImageAvailability();
+                updateDirtyState();
+                updatePreview();
+                scheduleValidation();
+            });
+        }
         previewImage.addEventListener('load', function () {
             updateCustomImageAvailability();
             updatePreview();
@@ -424,7 +475,9 @@
         });
         discardButton.addEventListener('click', function () {
             allowNavigation = true;
-            window.location.reload();
+            const discardUrl = new URL(window.location.href);
+            discardUrl.searchParams.delete('sigwm_settings_saved');
+            window.location.replace(discardUrl.toString());
         });
         window.addEventListener('beforeunload', function (event) {
             if (!allowNavigation && hasUnsavedChanges()) {

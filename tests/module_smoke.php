@@ -247,6 +247,13 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
                 $this->module->projectSettings[$key] = $value;
             }
         }
+
+        public function removeProjectSetting($key, $projectId = null)
+        {
+            if ($this->module !== null) {
+                unset($this->module->projectSettings[$key]);
+            }
+        }
     }
 
     class FakeUser
@@ -604,6 +611,31 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($redcapSettings['ok'], 'Project settings could not switch back to the REDCap logo.');
     moduleAssert($projectSettingsModule->projectSettings['custom-background-image'] === $retainedImageEdocId, 'Custom image was not retained while the REDCap-logo mode was selected.');
     moduleAssert($redcapSettings['state']['custom_image']['available'], 'Retained custom image became unavailable after selecting the REDCap logo.');
+    $replacementUpload = tempnam(sys_get_temp_dir(), 'sigwm-test-');
+    moduleAssert($replacementUpload !== false && file_put_contents($replacementUpload, $largeBackgroundPng) === strlen($largeBackgroundPng), 'Could not prepare a conflicting custom-image replacement upload.');
+    $edocIdBeforeRemoval = Files::$nextEdocId;
+    try {
+        $removedImageSettings = $projectSettingsModule->save_project_settings(123, array(
+            'retention_days' => '17',
+            'public_project_reference' => 'SIGWM-TEST',
+            'background_image_mode' => 'redcap',
+            'background_image_rotation' => '-30',
+            'remove_custom_background_image' => '1'
+        ), array(
+            'error' => UPLOAD_ERR_OK,
+            'name' => 'replacement.png',
+            'size' => strlen($largeBackgroundPng),
+            'tmp_name' => $replacementUpload
+        ));
+    } finally {
+        if (is_file($replacementUpload)) {
+            unlink($replacementUpload);
+        }
+    }
+    moduleAssert($removedImageSettings['ok'], 'Custom project settings could not remove the stored custom image.');
+    moduleAssert(!isset($projectSettingsModule->projectSettings['custom-background-image']), 'Removing the custom image did not clear its project setting.');
+    moduleAssert(!$removedImageSettings['state']['custom_image']['available'], 'Removed custom image remained available to the module.');
+    moduleAssert(Files::$nextEdocId === $edocIdBeforeRemoval, 'An explicitly removed custom image was unexpectedly replaced.');
     $missingCustomImage = $projectSettingsModule->save_project_settings(123, array(
         'retention_days' => '17',
         'public_project_reference' => 'SIGWM-TEST',
