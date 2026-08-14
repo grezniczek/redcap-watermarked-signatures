@@ -618,14 +618,14 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'background_image_mode' => 'redcap',
         'background_image_rotation' => '-30'
     ));
-    moduleAssert($maximumProjectReferenceValidation['ok'], 'Project settings rejected a 16-character public project reference.');
+    moduleAssert($maximumProjectReferenceValidation['ok'], 'Project settings rejected a 20-character public project reference.');
     $oversizedProjectReferenceValidation = $projectSettingsModule->validate_project_settings_input(123, array(
         'retention_days' => '17',
         'public_project_reference' => str_repeat('P', Renderer::MAX_PROJECT_REFERENCE_LENGTH + 1),
         'background_image_mode' => 'redcap',
         'background_image_rotation' => '-30'
     ));
-    moduleAssert($oversizedProjectReferenceValidation['errors']['public_project_reference'] === 'settings_error_public_project_reference', 'Project settings accepted a public project reference longer than 16 characters.');
+    moduleAssert($oversizedProjectReferenceValidation['errors']['public_project_reference'] === 'settings_error_public_project_reference', 'Project settings accepted a public project reference longer than 20 characters.');
     $retainedImageEdocId = $projectSettingsModule->projectSettings['custom-background-image'];
     $redcapSettings = $projectSettingsModule->save_project_settings(123, array(
         'retention_days' => '17',
@@ -736,7 +736,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($fieldReferenceBinding['field_reference'] === 'CONSENT', 'Binding did not retain the authenticated field reference.');
 
     $invalidFieldReferenceProject = new FakeProject();
-    $invalidFieldReferenceProject->metadata['participant_signature']['misc'] = '@WATERMARKED-SIGNATURE=CONSENT';
+    $invalidFieldReferenceProject->metadata['participant_signature']['misc'] = '@WATERMARKED-SIGNATURE="ENHANCED-MIGHTILY"';
     $invalidFieldReferenceModule = new WatermarkedSignaturesExternalModule();
     $invalidFieldReferenceModule->framework = new FakeFramework();
     setPrivateProperty($invalidFieldReferenceModule, 'proj', $invalidFieldReferenceProject);
@@ -746,7 +746,8 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     $invalidFieldReferenceConfig = injectedConfig(ob_get_clean());
     $invalidFieldReferenceEnvelope = $signer->verify($invalidFieldReferenceConfig['envelopes']['participant_signature']);
     moduleAssert($invalidFieldReferenceEnvelope['field_reference'] === null, 'An invalid field-reference action-tag parameter was not omitted.');
-    moduleAssert($invalidFieldReferenceEnvelope['field_reference_error'] === 'invalid_action_tag_parameter', 'An invalid field-reference action-tag parameter was not identified.');
+    moduleAssert($invalidFieldReferenceEnvelope['field_reference_error'] === 'field_reference_too_long', 'An oversized field-reference action-tag parameter was not identified.');
+    moduleAssert($invalidFieldReferenceEnvelope['field_reference_error_value'] === 'ENHANCED-MIGHTILY' && $invalidFieldReferenceEnvelope['field_reference_error_length'] === 17, 'An oversized field-reference action-tag parameter did not retain its diagnostic value and length.');
     $invalidFieldReferenceUpload = captureSignatureUpload(
         $invalidFieldReferenceModule,
         $invalidFieldReferenceConfig['envelopes']['participant_signature'],
@@ -755,6 +756,14 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     );
     moduleAssert($invalidFieldReferenceUpload['field_reference'] === null, 'An invalid field-reference action-tag parameter reached upload provenance.');
     moduleAssert(countLogsForMessage($invalidFieldReferenceModule, 'sigwm_error_field_reference') === 1, 'An invalid field-reference action-tag parameter was not logged during capture.');
+    foreach ($invalidFieldReferenceModule->logs as $log) {
+        if ($log[0] !== 'sigwm_error_field_reference') {
+            continue;
+        }
+        moduleAssert($log[1]['field_reference_error'] === 'field_reference_too_long', 'The field-reference diagnostic did not record the precise error code.');
+        moduleAssert($log[1]['field_reference_value'] === 'ENHANCED-MIGHTILY' && $log[1]['field_reference_length'] === 17 && $log[1]['field_reference_maximum_length'] === 16, 'The field-reference diagnostic did not record the configured value, length, and limit.');
+        break;
+    }
 
     $duplicateConfiguration = invokePrivate($invalidFieldReferenceModule, 'signature_field_configuration', array(array(
         'element_type' => 'file',
@@ -762,6 +771,24 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'misc' => '@WATERMARKED-SIGNATURE @WATERMARKED-SIGNATURE="CONSENT"'
     )));
     moduleAssert($duplicateConfiguration['configured'] && $duplicateConfiguration['field_reference'] === null && $duplicateConfiguration['field_reference_error'] === 'multiple_action_tags', 'Duplicate watermark action tags were not rejected as a field-reference configuration error.');
+
+    $maximumFieldConfiguration = invokePrivate($invalidFieldReferenceModule, 'signature_field_configuration', array(array(
+        'element_type' => 'file',
+        'element_validation_type' => 'signature',
+        'misc' => '@WATERMARKED-SIGNATURE="' . str_repeat('F', Renderer::MAX_FIELD_REFERENCE_LENGTH) . '"'
+    )));
+    moduleAssert($maximumFieldConfiguration['field_reference'] === str_repeat('F', Renderer::MAX_FIELD_REFERENCE_LENGTH), 'A 16-character field reference was rejected.');
+
+    $invalidFieldReferenceProject->metadata['ordinary_upload'] = array(
+        'form_name' => 'consent',
+        'element_type' => 'file',
+        'element_validation_type' => '',
+        'misc' => '@WATERMARKED-SIGNATURE="NOT-APPLIED"'
+    );
+    $actionTagAudit = $invalidFieldReferenceModule->get_project_action_tag_audit(123);
+    moduleAssert(count($actionTagAudit) === 2, 'The project action-tag audit did not report every invalid tag.');
+    moduleAssert($actionTagAudit[0]['field'] === 'participant_signature' && $actionTagAudit[0]['code'] === 'field_reference_too_long' && $actionTagAudit[0]['reference_length'] === 17 && $actionTagAudit[0]['maximum_length'] === 16, 'The action-tag audit did not report the oversized field reference precisely.');
+    moduleAssert($actionTagAudit[1]['field'] === 'ordinary_upload' && $actionTagAudit[1]['code'] === 'action_tag_unsupported_field', 'The action-tag audit did not report a tag on an unsupported field.');
 
     $verificationLink = array('key' => 'signature-verification', 'url' => 'pages/verify-signature.php');
     $projectSettingsLink = array('key' => 'project-settings', 'url' => 'pages/project-settings.php');

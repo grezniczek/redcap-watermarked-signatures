@@ -539,12 +539,12 @@ An optional project-level **public project reference** may be printed as
 `REF:<project-reference>` or, with a field mark, as
 `REF:<project-reference>:<field-reference>`. This is a short, opt-in acronym or
 identifier, not the REDCap PID or project title. It is a visual recognition aid
-only and does not replace the cryptographic anchor. New project references and
-field references are each capped at 16 safe ASCII characters and snapshotted in
-upload provenance because changing configuration must not rewrite the meaning
-of an existing image. Since the values are visible in image exports and
-screenshots, they must be left blank when they would reveal sensitive project
-information.
+only and does not replace the cryptographic anchor. New project references are
+capped at 20 safe ASCII characters and field references at 16; both are
+snapshotted in upload provenance because changing configuration must not rewrite
+the meaning of an existing image. Since the values are visible in image exports
+and screenshots, they must be left blank when they would reveal sensitive
+project information.
 
 ## 9.3 Rendering order
 

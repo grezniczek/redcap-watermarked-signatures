@@ -20,10 +20,13 @@ envelope by the `fieldName` argument supplied by REDCap.
 
 `@WATERMARKED-SIGNATURE` may carry one simple quoted field-reference parameter,
 for example `@WATERMARKED-SIGNATURE="CONSENT"`. The module accepts a trimmed
-1–16 character ASCII component using the same safe alphabet as project
-references. It signs the resolved component into the envelope. A malformed,
-duplicate, or invalid parameter leaves the field watermarked but omits that
-component from `REF:` and creates a capture-time diagnostic.
+1–16 character ASCII component using the project-reference alphabet. Project
+references are capped at 20 characters. It signs the resolved component into
+the envelope. A malformed, duplicate, or invalid parameter leaves the field
+watermarked but omits that component from `REF:` and creates a capture-time
+diagnostic. The project settings and project verification pages independently
+audit every tag and report the affected field, reason, value length, and limit
+where applicable.
 
 ## Upload interception
 
@@ -85,9 +88,9 @@ values:
 The renderer accepts only the WM1 Base32 identifier shapes and an ISO 8601 UTC
 timestamp ending in `Z`. The SHA-256 digest is computed over the final encoded
 PNG and stored in both upload provenance and the later MAC-protected binding.
-The optional visible reference is a 16-character project component, a
+The optional visible reference is a 20-character project component, a
 16-character field component, or both separated by `:`; its maximum rendered
-length is therefore 33 characters. This extends WM1 without changing its
+length is therefore 37 characters. This extends WM1 without changing its
 footer structure or identifier semantics.
 
 ## Failure behavior

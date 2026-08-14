@@ -52,6 +52,11 @@ configured signature field. Results are further limited by your form rights and
 Data Access Group (DAG) membership. A missing link or a **Not available**
 result does not confirm that a capture does not exist.
 
+If the project contains an invalid or duplicate `@WATERMARKED-SIGNATURE`
+annotation, the page also shows the affected field and the reason. Correct the
+annotation before relying on its field mark in `REF:`; captures still proceed
+with the field mark omitted.
+
 ## Understand the result
 
 | Result | Meaning | What to do |

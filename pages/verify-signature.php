@@ -7,6 +7,7 @@ try {
         throw new RuntimeException('Project context is required.');
     }
     $controller = $module->get_project_verification_controller((int) PROJECT_ID);
+    $actionTagAudit = $module->get_project_action_tag_audit((int) PROJECT_ID);
 } catch (Throwable $exception) {
     http_response_code(403);
     $unavailableMessage = $module->framework->tt('ui_project_verification_unavailable'); // Signature verification is not available for your account in this project.
@@ -60,4 +61,5 @@ $verificationPage = array(
     )
 );
 
+require __DIR__ . '/partials/action-tag-audit.php';
 require __DIR__ . '/partials/verification-page.php';

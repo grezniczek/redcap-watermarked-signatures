@@ -47,7 +47,7 @@ $escape = function ($value) {
 $errorMessages = array(
     'settings_error_invalid_request' => $module->framework->tt('settings_error_invalid_request'), // The settings request was invalid. Please reload the page and try again.
     'settings_error_retention_days' => $module->framework->tt('settings_error_retention_days'), // Enter a whole-number retention period from 0 to 3650 days.
-    'settings_error_public_project_reference' => $module->framework->tt('settings_error_public_project_reference'), // The public project reference must be blank or use 1–16 permitted ASCII characters.
+    'settings_error_public_project_reference' => $module->framework->tt('settings_error_public_project_reference'), // The public project reference must be blank or use 1–20 permitted ASCII characters.
     'settings_error_background_mode' => $module->framework->tt('settings_error_background_mode'), // Choose a valid signature background mode.
     'settings_error_background_rotation' => $module->framework->tt('settings_error_background_rotation'), // Enter a whole-number custom-image rotation from -180 to 180 degrees.
     'settings_error_custom_image_required' => $module->framework->tt('settings_error_custom_image_required'), // Upload a valid custom image before selecting the custom-image background mode.
@@ -97,6 +97,7 @@ $removeCustomImageRequested = !$saved
     && in_array($_POST['remove_custom_background_image'] ?? null, array(true, 1, '1', 'true', 'on'), true);
 
 $customImage = $settings['custom_image'];
+$actionTagAudit = $settings['action_tag_audit'] ?? array();
 $previewUrl = $customImage['preview_data_url'];
 $customImageAvailable = $customImage['available'];
 $javascriptDebugSetting = $module->getProjectSetting('javascript-debug');
@@ -175,6 +176,8 @@ $module->framework->tt_transferToJavascriptModuleObject(array(
     <h1 class="projhdr"><i class="fa-solid fa-sliders me-2"></i><?= $escape($module->framework->tt('settings_page_title')) /* Configure Watermarked Signatures */ ?></h1>
     <p class="sigwm-settings-intro text-muted small"><?= $escape($module->framework->tt('settings_intro')) /* These settings apply to future signature captures in this project. Existing signatures and their provenance are not changed. */ ?></p>
 
+    <?php require __DIR__ . '/partials/action-tag-audit.php'; ?>
+
     <form id="sigwm-project-settings-form" method="post" enctype="multipart/form-data" class="card card-body sigwm-settings-card" autocomplete="off" novalidate>
         <input type="hidden" name="redcap_csrf_token" value="<?= $escape($module->getCSRFToken()) ?>">
 
@@ -189,8 +192,8 @@ $module->framework->tt_transferToJavascriptModuleObject(array(
         <fieldset class="mb-3" data-settings-field="public_project_reference">
             <legend><?= $escape($module->framework->tt('settings_public_reference_heading')) /* Public project reference */ ?></legend>
             <label for="sigwm-public-reference" class="form-label fw-semibold"><?= $escape($module->framework->tt('settings_public_reference_label')) /* Visible REF: value (optional) */ ?></label>
-            <input id="sigwm-public-reference" class="form-control form-control-sm<?= isset($fieldErrors['public_project_reference']) ? ' is-invalid' : '' ?>" type="text" name="public_project_reference" maxlength="16" value="<?= $escape($formValues['public_project_reference']) ?>" style="max-width: 30em;">
-            <div class="form-text"><?= $escape($module->framework->tt('settings_public_reference_help')) /* This value is printed on every future signature image. Use 1–16 ASCII letters, digits, spaces, periods, hyphens, underscores, or slashes. Do not use sensitive information. */ ?></div>
+            <input id="sigwm-public-reference" class="form-control form-control-sm<?= isset($fieldErrors['public_project_reference']) ? ' is-invalid' : '' ?>" type="text" name="public_project_reference" maxlength="20" value="<?= $escape($formValues['public_project_reference']) ?>" style="max-width: 30em;">
+            <div class="form-text"><?= $escape($module->framework->tt('settings_public_reference_help')) /* This value is printed on every future signature image. Use 1–20 ASCII letters, digits, spaces, periods, hyphens, underscores, or slashes. Do not use sensitive information. */ ?></div>
             <div class="invalid-feedback d-block" data-settings-error="public_project_reference"<?= isset($fieldErrors['public_project_reference']) ? '' : ' hidden' ?>><?= isset($fieldErrors['public_project_reference']) ? $escape($errorMessages[$fieldErrors['public_project_reference']]) : '' ?></div>
         </fieldset>
 
