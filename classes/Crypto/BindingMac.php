@@ -58,6 +58,11 @@ class BindingMac
 		'watermark_version'
 	);
 
+	/** @var array<int, string> Fields added after the initial binding format. */
+	private static $optionalFields = array(
+		'field_reference'
+	);
+
 	/**
 	 * @param string $key Binary HMAC key of at least 32 bytes.
 	 * @return void
@@ -131,6 +136,11 @@ class BindingMac
 				throw new \UnexpectedValueException("Binding property '{$field}' is missing.");
 			}
 			$payload[$field] = $binding[$field];
+		}
+		foreach (self::$optionalFields as $field) {
+			if (array_key_exists($field, $binding)) {
+				$payload[$field] = $binding[$field];
+			}
 		}
 		return $payload;
 	}

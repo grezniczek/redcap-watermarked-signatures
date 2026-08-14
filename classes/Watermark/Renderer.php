@@ -27,7 +27,10 @@ class Renderer
 	const MAX_BACKGROUND_IMAGE_ROTATION = 180;
 	const MIN_OUTPUT_WIDTH = 460;
 	const FOOTER_HEIGHT = 38;
-	const MAX_PROJECT_REFERENCE_LENGTH = 30;
+	const MAX_PROJECT_REFERENCE_LENGTH = 16;
+	const MAX_FIELD_REFERENCE_LENGTH = 16;
+	const MAX_LEGACY_PROJECT_REFERENCE_LENGTH = 30;
+	const MAX_VISIBLE_REFERENCE_LENGTH = 33;
 	const FONT = 2;
 
 	/**
@@ -36,7 +39,7 @@ class Renderer
 	 * @param string $contextReference Visible C:-prefixed context reference.
 	 * @param string $captureReference Visible S:-prefixed capture reference.
 	 * @param string $capturedAt UTC ISO 8601 capture timestamp.
-	 * @param string|null $projectReference Optional public project reference.
+	 * @param string|null $projectReference Optional public reference shown after REF:.
 	 * @param array{mode: 'redcap'|'custom'|'none', contents?: string|null, rotation?: int|string}|null $backgroundImage
 	 * @return string Watermarked PNG bytes.
 	 */
@@ -305,8 +308,8 @@ class Renderer
 		if (
 			$projectReference !== null
 			&& (!is_string($projectReference)
-				|| strlen($projectReference) > self::MAX_PROJECT_REFERENCE_LENGTH
-				|| !preg_match('/^[A-Za-z0-9][A-Za-z0-9 ._\/-]*$/D', $projectReference))
+				|| strlen($projectReference) > self::MAX_VISIBLE_REFERENCE_LENGTH
+				|| !preg_match('/^[A-Za-z0-9][A-Za-z0-9 ._\/-]*(?::[A-Za-z0-9][A-Za-z0-9 ._\/-]*)?$/D', $projectReference))
 		) {
 			throw new \InvalidArgumentException('The watermark public project reference is invalid.');
 		}
