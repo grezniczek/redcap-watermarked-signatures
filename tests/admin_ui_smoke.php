@@ -118,6 +118,7 @@ $service->result = array(
         'edoc_id' => 1903,
         'file_sha256' => str_repeat('a', 64),
         'project_reference' => 'SIGWM-TEST',
+        'field_reference' => 'CONSENT',
         'background_image_mode' => 'custom',
         'background_image_effective_mode' => 'custom',
         'background_image_sha256' => str_repeat('b', 64),
@@ -154,6 +155,7 @@ adminUiAssert($presented['details']['upload_project_id'] === 461, 'Upload projec
 adminUiAssert($presented['details']['binding_log_id'] === 88, 'Binding log ID was not presented.');
 adminUiAssert($presented['details']['record_id'] === '12', 'Administrator details did not present the current record ID.');
 adminUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Administrator details did not present the public project reference.');
+adminUiAssert($presented['details']['field_reference'] === 'CONSENT', 'Administrator details did not present the field reference.');
 adminUiAssert($presented['details']['background_image_mode'] === 'custom', 'Administrator details did not present the selected background image mode.');
 adminUiAssert($presented['details']['background_image_effective_mode'] === 'custom', 'Administrator details did not present the applied background image mode.');
 adminUiAssert($presented['details']['background_image_sha256'] === str_repeat('b', 64), 'Administrator details did not present the custom background image digest.');

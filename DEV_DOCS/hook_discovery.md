@@ -18,6 +18,16 @@ the file/signature dialog JavaScript. The module uses these hooks to:
 This supports multiple signature fields because the wrapper selects the
 envelope by the `fieldName` argument supplied by REDCap.
 
+`@WATERMARKED-SIGNATURE` may carry one simple quoted field-reference parameter,
+for example `@WATERMARKED-SIGNATURE="CONSENT"`. The module accepts a trimmed
+1–16 character ASCII component using the project-reference alphabet. Project
+references are capped at 20 characters. It signs the resolved component into
+the envelope. A malformed, duplicate, or invalid parameter leaves the field
+watermarked but omits that component from `REF:` and creates a capture-time
+diagnostic. The project settings and project verification pages independently
+audit every tag and report the affected field, reason, value length, and limit
+where applicable.
+
 ## Upload interception
 
 `DataEntry/file_upload.php` includes `Config/init_project.php` before it decodes
@@ -78,6 +88,10 @@ values:
 The renderer accepts only the WM1 Base32 identifier shapes and an ISO 8601 UTC
 timestamp ending in `Z`. The SHA-256 digest is computed over the final encoded
 PNG and stored in both upload provenance and the later MAC-protected binding.
+The optional visible reference is a 20-character project component, a
+16-character field component, or both separated by `:`; its maximum rendered
+length is therefore 37 characters. This extends WM1 without changing its
+footer structure or identifier semantics.
 
 ## Failure behavior
 
@@ -159,6 +173,24 @@ field-specific `context_ref`. This reference connects upload provenance to the
 later save without placing a tentative record identifier in the signed envelope
 or immutable image. Stable record pseudonyms are deferred beyond the first
 milestone, as permitted by the implementation plan.
+
+`field_reference` is optional for compatibility with envelopes and provenance
+created before field marks were introduced. New envelopes include it (or an
+internal configuration-error code when it was deliberately omitted). New
+upload/binding pairs use provenance format `v: 2`. Their `binding_mac` retains
+the released v1 payload exactly, allowing a v1.0.2 verifier to validate the
+base MAC and matched upload/binding pair. A separately derived
+`binding_extension_mac` authenticates `field_reference` together with the
+format version and base MAC. Current verification requires that extension MAC
+for v2; v1 bindings without it continue to verify. The short-lived development
+format that placed `field_reference` directly in a v1 base-MAC payload remains
+accepted for already captured development signatures.
+
+The provenance `v` is not the visible `WM1` marker or the signed-envelope
+version. When a future binding extension is needed, keep the established base
+MAC schema intact, protect the new values with an extension MAC bound to the
+base MAC, write the new `v` consistently to upload and binding events, and
+regression-test the preceding verifier's base-MAC behavior.
 
 After REDCap creates the record, its post-save path invokes
 `redcap_save_record` with the authoritative record ID. The module reads the edoc
@@ -245,7 +277,8 @@ Edoc existence and bytes are obtained through `Files::getEdocInfo()` and
 external storage abstraction. The verifier recomputes the SHA-256 digest but
 does not return file contents. Current-field comparison reads the normalized
 classic, repeating-instrument, or repeating-event location only after the
-binding MAC, upload relationship, and anchor have been trusted.
+binding MAC, required binding-extension MAC, upload relationship, and anchor
+have been trusted.
 
 The verification service deliberately performs no user-rights or DAG decision.
 That authorization boundary belongs to the project and administrator UI slices

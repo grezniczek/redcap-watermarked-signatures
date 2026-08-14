@@ -24,7 +24,9 @@ TS:2026-08-09T12:34:56.789Z
 ```
 
 Depending on the project configuration, the signature may also have a faint
-repeated background image. It does not change the identifier overlay or footer.
+repeated background image and a visible `REF:` value. A project can add a
+field-specific mark to `REF:`, such as `REF:STUDY:CONSENT` or `REF:CONSENT`.
+These do not change the identifier overlay or the capture-reference lookup.
 
 The value after `S:` is the **capture reference**. Keep the complete value when
 you need someone to verify an exported image. `TS:` is a server-generated UTC
@@ -49,6 +51,11 @@ The link is available only to users who can view at least one instrument with a
 configured signature field. Results are further limited by your form rights and
 Data Access Group (DAG) membership. A missing link or a **Not available**
 result does not confirm that a capture does not exist.
+
+If the project contains an invalid or duplicate `@WATERMARKED-SIGNATURE`
+annotation, the page also shows the affected field and the reason. Correct the
+annotation before relying on its field mark in `REF:`; captures still proceed
+with the field mark omitted.
 
 ## Understand the result
 
@@ -75,8 +82,8 @@ to work around the message by uploading the image to an ordinary file field.
 ## Privacy reminders
 
 The watermark remains visible in exports and screenshots. Treat the capture
-reference and any visible `REF:` project reference according to the project's
-data-handling policy. The module verifies REDCap's stored file and does not
-return signature image bytes through the verification page.
+reference and any visible `REF:` project or field reference according to the
+project's data-handling policy. The module verifies REDCap's stored file and
+does not return signature image bytes through the verification page.
 
 For the full module overview, see the [main documentation](../README.md).

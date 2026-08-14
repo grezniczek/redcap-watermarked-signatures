@@ -117,6 +117,7 @@ function projectUiResult($captureReference)
             'edoc_id' => 98137,
             'file_sha256' => str_repeat('a', 64),
             'project_reference' => 'SIGWM-TEST',
+            'field_reference' => 'CONSENT',
             'background_image_mode' => 'custom',
             'background_image_effective_mode' => 'custom',
             'background_image_sha256' => str_repeat('b', 64),
@@ -205,6 +206,7 @@ $presented = $controller->verify($captureReference);
 projectUiAssert($presented['status'] === 'valid_current' && $service->calls === 1, 'Authorized verification was not delegated to the service.');
 projectUiAssert($presented['details']['record_id'] === 'R-002', 'Authorized record details did not show the current record ID.');
 projectUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Authorized details did not show the public project reference.');
+projectUiAssert($presented['details']['field_reference'] === 'CONSENT', 'Authorized details did not show the field reference.');
 projectUiAssert($presented['details']['background_image_mode'] === 'custom', 'Authorized details did not show the selected background image mode.');
 projectUiAssert($presented['details']['background_image_effective_mode'] === 'custom', 'Authorized details did not show the applied background image mode.');
 projectUiAssert($presented['details']['background_image_sha256'] === str_repeat('b', 64), 'Authorized details did not show the custom background image digest.');
@@ -348,6 +350,7 @@ $localizationSources = array(
     __DIR__ . '/../pages/project-settings.php',
     __DIR__ . '/../pages/verify-signature.php',
     __DIR__ . '/../pages/admin-verify-signature.php',
+    __DIR__ . '/../pages/partials/action-tag-audit.php',
     __DIR__ . '/../pages/partials/verification-page.php'
 );
 foreach ($localizationSources as $sourcePath) {
@@ -360,10 +363,14 @@ foreach ($localizationSources as $sourcePath) {
 
 $entrySource = file_get_contents(__DIR__ . '/../pages/verify-signature.php');
 $settingsPageSource = file_get_contents(__DIR__ . '/../pages/project-settings.php');
+$actionTagAuditSource = file_get_contents(__DIR__ . '/../pages/partials/action-tag-audit.php');
+$moduleSource = file_get_contents(__DIR__ . '/../WatermarkedSignaturesExternalModule.php');
+$onlineDesignerAuditScriptSource = file_get_contents(__DIR__ . '/../js/online-designer-action-tag-audit.js');
 $settingsScriptSource = file_get_contents(__DIR__ . '/../js/project-settings.js');
 $pageSource = file_get_contents(__DIR__ . '/../pages/partials/verification-page.php');
 projectUiAssert(strpos($entrySource, "'is_administrator' => false") !== false, 'Project verification entry point does not declare project scope.');
 projectUiAssert(strpos($entrySource, "require __DIR__ . '/partials/verification-page.php'") !== false, 'Project verification entry point does not use the shared page partial.');
+projectUiAssert(strpos($entrySource, 'get_project_action_tag_audit') !== false && strpos($entrySource, "require __DIR__ . '/partials/action-tag-audit.php'") !== false, 'Project verification page does not retrieve and render the action-tag audit.');
 projectUiAssert(strpos($entrySource, "'documentation_url' => \$module->getUrl('docs/project-user-guide.md')") !== false, 'Project verification entry point does not link its user guide.');
 projectUiAssert(strpos($entrySource, "\$module->framework->tt('ui_project_verification_guide_help')") !== false, 'Project verification entry point does not retrieve documentation help text from the language file.');
 projectUiAssert(strpos($pageSource, 'method="post"') !== false, 'Verification form does not use POST.');
@@ -381,6 +388,13 @@ projectUiAssert(strpos($pageSource, 'id="sigwm-verification-result"') !== false,
 projectUiAssert(strpos($pageSource, "result.remove()") !== false, 'Verification search clear handler does not clear the result.');
 projectUiAssert(strpos($pageSource, 'Go to field') !== false, 'Verification details do not include a field-navigation link.');
 projectUiAssert(strpos($settingsPageSource, 'get_project_settings_state') !== false, 'Project settings page does not retrieve the saved settings.');
+projectUiAssert(strpos($settingsPageSource, 'maxlength="20"') !== false, 'Project settings page does not limit the public project reference to 20 characters.');
+projectUiAssert(strpos($settingsPageSource, "require __DIR__ . '/partials/action-tag-audit.php'") !== false, 'Project settings page does not render the action-tag audit.');
+projectUiAssert(strpos($actionTagAuditSource, 'field_reference_too_long') !== false && strpos($actionTagAuditSource, 'field_reference_invalid_characters') !== false && strpos($actionTagAuditSource, 'text-danger fw-bold') !== false, 'Action-tag audit does not present and emphasize detailed character-level findings.');
+projectUiAssert(strpos($actionTagAuditSource, 'sigwm-action-tag-audit-reference') !== false && strpos($actionTagAuditSource, 'reference_value') !== false, 'Action-tag audit does not render the original parameter value.');
+projectUiAssert(strpos($moduleSource, "PAGE !== 'Design/online_designer.php'") !== false && strpos($moduleSource, 'project_action_tag_audit($instrument)') !== false, 'Online Designer does not scope the action-tag audit to its active instrument.');
+projectUiAssert(strpos($moduleSource, "js/online-designer-action-tag-audit.js") !== false && strpos($onlineDesignerAuditScriptSource, "audit.style.maxWidth = '800px'") !== false && strpos($onlineDesignerAuditScriptSource, "audit.style.maxWidth = '1040px'") !== false, 'Online Designer action-tag audit does not use the intended widths for field and overview views.');
+projectUiAssert(strpos($onlineDesignerAuditScriptSource, 'draggablecontainer_parent') !== false && strpos($onlineDesignerAuditScriptSource, 'forms_surveys') !== false, 'Online Designer action-tag audit is not injected at the correct location for field and overview views.');
 projectUiAssert(strpos($settingsPageSource, 'save_project_settings') !== false, 'Project settings page does not save through the module API.');
 projectUiAssert(strpos($settingsPageSource, "header('Location: '") !== false && strpos($settingsPageSource, 'true, 303') !== false, 'Project settings page does not redirect after a successful save.');
 projectUiAssert(strpos($settingsPageSource, 'sigwm_settings_saved') !== false, 'Project settings page does not preserve its success message after redirecting.');

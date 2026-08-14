@@ -32,7 +32,9 @@ require_once __DIR__ . '/../classes/Context/SavedContext.php';
 require_once __DIR__ . '/../classes/Storage/LogRepository.php';
 
 use DE\RUB\WatermarkedSignaturesExternalModule\Context\SavedContext;
+use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\Base64Url;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\BindingMac;
+use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\CanonicalJson;
 use DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository;
 use RuntimeException;
 
@@ -228,6 +230,37 @@ $tamperedUsernameBinding = $bindingWithMac;
 $tamperedUsernameBinding['save_username'] = 'other-user';
 bindingAssert(!$mac->verify($tamperedUsernameBinding), 'Binding MAC did not detect a changed username snapshot.');
 
+// Format v2 keeps this base MAC deliberately compatible with the v1.0.2
+// verifier and protects field_reference with an independently derived MAC.
+$v2Mac = new BindingMac(str_repeat('b', 32), str_repeat('c', 32));
+$v2Binding = $binding;
+$v2Binding['v'] = 2;
+$v2Binding['field_reference'] = 'CONSENT';
+$v2Binding['binding_mac'] = $v2Mac->create($v2Binding);
+$v2Binding['binding_extension_mac'] = $v2Mac->createExtension($v2Binding);
+bindingAssert($v2Mac->verify($v2Binding), 'Format-v2 binding base MAC verification failed.');
+bindingAssert($v2Mac->verifyExtension($v2Binding), 'Format-v2 binding extension MAC verification failed.');
+$v102Verifier = new BindingMac(str_repeat('b', 32));
+bindingAssert($v102Verifier->verify($v2Binding), 'A v1.0.2-compatible base verifier rejected a format-v2 binding.');
+$tamperedV2FieldReference = $v2Binding;
+$tamperedV2FieldReference['field_reference'] = 'WITHDRAWN';
+bindingAssert($v2Mac->verify($tamperedV2FieldReference), 'Changing only a format-v2 extension unexpectedly changed the base MAC.');
+bindingAssert(!$v2Mac->verifyExtension($tamperedV2FieldReference), 'Extension MAC did not detect a changed field reference.');
+
+// Accept the short-lived development format that included field_reference in
+// the v1 base-MAC payload before the released v2 extension format existed.
+$preReleaseBinding = $binding;
+$preReleaseBinding['field_reference'] = 'CONSENT';
+$preReleasePayload = $mac->definingPayload($preReleaseBinding);
+$preReleasePayload['field_reference'] = $preReleaseBinding['field_reference'];
+$preReleaseBinding['binding_mac'] = Base64Url::encode(hash_hmac(
+    'sha256',
+    CanonicalJson::encode($preReleasePayload),
+    str_repeat('b', 32),
+    true
+));
+bindingAssert($mac->verify($preReleaseBinding), 'Pre-release field-reference binding did not remain verifiable.');
+
 $module = new BindingTestModule();
 $GLOBALS['bindingPrimaryModule'] = $module;
 $repository = new LogRepository($module, $mac);
@@ -268,6 +301,20 @@ bindingAssert($GLOBALS['bindingPrimaryLogQueryCount'] > 0, 'Binding lookup did n
 $primaryLogQueriesBeforeRenameLookup = $GLOBALS['bindingPrimaryLogQueryCount'];
 bindingAssert($repository->findBoundRecordId('R-001') === 'R-001', 'Bound record lookup did not return the current record ID.');
 bindingAssert($GLOBALS['bindingPrimaryLogQueryCount'] === $primaryLogQueriesBeforeRenameLookup + 1, 'Bound record lookup did not use the primary database path.');
+
+$v2Module = new BindingTestModule();
+$GLOBALS['bindingPrimaryModule'] = $v2Module;
+$v2Repository = new LogRepository($v2Module, $v2Mac);
+bindingAssert($v2Repository->bindOnce($v2Binding) === LogRepository::RESULT_BOUND, 'Format-v2 binding was not appended.');
+$storedV2Binding = json_decode($v2Module->events[0]['payload_json'], true);
+bindingAssert(isset($storedV2Binding['binding_extension_mac']), 'Format-v2 binding did not store its extension MAC.');
+bindingAssert($v2Mac->verifyExtension($storedV2Binding), 'Stored format-v2 extension MAC did not verify.');
+$conflictingV2FieldReference = $v2Binding;
+$conflictingV2FieldReference['field_reference'] = 'WITHDRAWN';
+bindingAssert($v2Repository->bindOnce($conflictingV2FieldReference) === LogRepository::RESULT_CONFLICT, 'A changed format-v2 field reference was treated as idempotent.');
+$storedV2Binding['binding_extension_mac'] = str_repeat('x', 43);
+$v2Module->events[0]['payload_json'] = json_encode($storedV2Binding);
+bindingAssert($v2Repository->bindOnce($v2Binding) === LogRepository::RESULT_INVALID_EXISTING_MAC, 'Invalid existing extension MAC was not detected.');
 
 $nonceModule = new BindingTestModule();
 $GLOBALS['bindingPrimaryModule'] = $nonceModule;

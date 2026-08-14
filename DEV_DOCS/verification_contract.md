@@ -51,6 +51,7 @@ Primary statuses are:
 The independent checks are:
 
 - binding MAC validation;
+- binding-extension MAC validation for format-v2 bindings;
 - upload-to-binding relationship validation;
 - stable-scope anchor recomputation;
 - edoc existence;
@@ -72,9 +73,24 @@ issue; callers must also inspect `integrity`, `checks`, and `issues`.
 6. Recompute SHA-256 over the current edoc bytes without returning those bytes
    in the result.
 7. Look up the one-time binding by edoc ID.
-8. Validate its MAC and its immutable relationship to upload provenance.
+8. Validate its base MAC, required format-v2 extension MAC, and immutable
+   relationship to upload provenance.
 9. Only after the binding is trusted, read the bound REDCap field at the current
    record ID and compare its current edoc value.
+
+## Binding-format compatibility
+
+The upload/binding provenance version is independent of `WM1` and the signed
+envelope version. Format v2 preserves the released v1 `binding_mac` payload so
+that a v1.0.2 verifier can still validate a v2 binding's base MAC and matched
+upload/binding relationship. It authenticates `field_reference` using a
+separately derived extension MAC over the provenance version, base MAC, and
+field reference. Current verification requires that extension MAC for v2;
+legacy v1 bindings remain valid without one.
+
+Future authenticated binding extensions must preserve the prior base-MAC
+schema, bind their extension MAC to the protected base MAC, and include a
+regression test of the previous verifier's base-MAC behavior.
 
 The current-value adapter handles classic event data, repeating instruments,
 and repeating events using the normalized repeat data stored in the binding.
@@ -103,9 +119,11 @@ superuser or a project user who has at least read-only viewing access to one
 instrument containing an enabled signature field.
 
 The image, signed envelope, log payloads, and details pages use the same
-canonical identifiers: `S:`, `C:`, and `A:`. The page displays `S:` as a fixed
-input-group prefix so the user enters exactly the suffix visible on the image;
-the controller restores the canonical `S:` prefix before exact lookup.
+canonical identifiers: `S:`, `C:`, and `A:`. Upload provenance may additionally
+contain an optional `field_reference`, which is shown as an authorized detail
+but is not used for lookup. The page displays `S:` as a fixed input-group prefix
+so the user enters exactly the suffix visible on the image; the controller
+restores the canonical `S:` prefix before exact lookup.
 
 Authorization is performed before full verification reads an edoc or current
 record value:
@@ -157,6 +175,6 @@ for administrator verification.
 
 ## Project configuration page
 
-The project module link **Configure Watermarked Signatures** is available only to superusers and users with project design rights. Its backing project settings remain hidden in the standard External Module dialog, except for browser-debug output. The page validates the unbound-upload retention period, public project reference, image mode, custom-image rotation, and optional PNG upload before persisting through the framework setting API.
+The project module link **Configure Watermarked Signatures** is available only to superusers and users with project design rights. Its backing project settings remain hidden in the standard External Module dialog, except for browser-debug output. The page validates the unbound-upload retention period, 1–20 character public project reference, image mode, custom-image rotation, and optional PNG upload before persisting through the framework setting API. The settings and project verification pages audit every watermark action tag. Historical 21–30 character project references remain valid in existing provenance and continue to render without a field reference.
 
 Custom PNG uploads may be at most 6 MiB and 4096 pixels per side, subject to the renderer's 12-million-pixel input limit. Before creating the project edoc, the page decodes and normalizes the image with GD to at most 512 pixels per side and 1 MiB, preserving transparency and aspect ratio. The result must retain at least 16 pixels per side. The current stored image is retained when no replacement is uploaded, including while the REDCap-logo or no-image mode is selected. Custom-image rotation is an integer in the inclusive range -180 through 180; it is recorded in upload provenance with the selected and applied background modes and custom-image SHA-256.

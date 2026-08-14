@@ -244,6 +244,18 @@ if (extension_loaded('gd')) {
     );
     assertTrue(!hash_equals($watermarked, $watermarkedWithReference), 'Public project reference did not affect the rendered footer.');
 
+    $combinedReference = str_repeat('P', Renderer::MAX_PROJECT_REFERENCE_LENGTH)
+        . ':' . str_repeat('F', Renderer::MAX_FIELD_REFERENCE_LENGTH);
+    $watermarkedWithCombinedReference = $renderer->renderBase64(
+        base64_encode($png),
+        $anchor,
+        $payload['context_ref'],
+        $captureReference,
+        '2026-07-16T14:32:05Z',
+        $combinedReference
+    );
+    assertTrue(!hash_equals($watermarked, $watermarkedWithCombinedReference), 'A combined project and field reference did not affect the rendered footer.');
+
     $sameWatermark = $renderer->renderBase64(
         base64_encode($png),
         $anchor,
@@ -326,7 +338,7 @@ if (extension_loaded('gd')) {
 
     $longestFooter = max(
         strlen('WM1 S:' . preg_replace('/^S:/', '', $captureReference) . ' A:' . preg_replace('/^A:/', '', $anchor) . ' C:' . preg_replace('/^C:/', '', $payload['context_ref'])),
-        strlen('TS:2026-07-16T14:32:05.381Z REF:' . str_repeat('X', Renderer::MAX_PROJECT_REFERENCE_LENGTH))
+        strlen('TS:2026-07-16T14:32:05.381Z REF:' . str_repeat('X', Renderer::MAX_VISIBLE_REFERENCE_LENGTH))
     );
     assertTrue(
         Renderer::MIN_OUTPUT_WIDTH >= 10 + ($longestFooter * imagefontwidth(Renderer::FONT)),
@@ -426,7 +438,7 @@ if (extension_loaded('gd')) {
             $payload['context_ref'],
             $captureReference,
             '2026-07-16T14:32:05Z',
-            str_repeat('X', Renderer::MAX_PROJECT_REFERENCE_LENGTH + 1)
+            str_repeat('X', Renderer::MAX_VISIBLE_REFERENCE_LENGTH + 1)
         );
     }, 'Renderer accepted an oversized public project reference.');
 }

@@ -10,6 +10,9 @@ class BindingMac
 	/** @var string Binary HMAC key. */
 	private $key;
 
+	/** @var string|null Binary HMAC key for format-v2 binding extensions. */
+	private $extensionKey;
+
 	/** @var array<int, string> */
 	private static $definingFields = array(
 		'v',
@@ -58,16 +61,33 @@ class BindingMac
 		'watermark_version'
 	);
 
+	/** @var array<int, string> Fields in the pre-release v1.0.3 MAC extension. */
+	private static $legacyExtensionFields = array(
+		'field_reference'
+	);
+
+	/** @var array<int, string> Fields protected by the format-v2 extension MAC. */
+	private static $extensionFields = array(
+		'v',
+		'binding_mac',
+		'field_reference'
+	);
+
 	/**
 	 * @param string $key Binary HMAC key of at least 32 bytes.
+	 * @param string|null $extensionKey Independently derived extension-MAC key.
 	 * @return void
 	 */
-	public function __construct($key)
+	public function __construct($key, $extensionKey = null)
 	{
 		if (!is_string($key) || strlen($key) < 32) {
 			throw new \InvalidArgumentException('Binding key must contain at least 32 bytes.');
 		}
+		if ($extensionKey !== null && (!is_string($extensionKey) || strlen($extensionKey) < 32)) {
+			throw new \InvalidArgumentException('Binding extension key must contain at least 32 bytes.');
+		}
 		$this->key = $key;
+		$this->extensionKey = $extensionKey;
 	}
 
 	/**
@@ -89,7 +109,43 @@ class BindingMac
 		if (!isset($binding['binding_mac']) || !is_string($binding['binding_mac'])) {
 			return false;
 		}
-		return hash_equals($this->create($binding), $binding['binding_mac']);
+		if (hash_equals($this->create($binding), $binding['binding_mac'])) {
+			return true;
+		}
+		return $this->isLegacyFieldReferenceBinding($binding)
+			&& hash_equals($this->createLegacyFieldReferenceMac($binding), $binding['binding_mac']);
+	}
+
+	/**
+	 * Create the independently keyed MAC for a format-v2 binding extension.
+	 * Its base MAC binds this small payload to all v1 binding-defining values.
+	 *
+	 * @param array<string, mixed> $binding Complete authoritative binding with its base binding_mac value.
+	 * @return string Base64url-encoded extension MAC.
+	 */
+	public function createExtension($binding)
+	{
+		if ($this->extensionKey === null) {
+			throw new \LogicException('A binding extension key is required.');
+		}
+		$payload = $this->payloadForFields($binding, self::$extensionFields);
+		return Base64Url::encode(hash_hmac('sha256', CanonicalJson::encode($payload), $this->extensionKey, true));
+	}
+
+	/**
+	 * @param array<string, mixed> $binding Complete format-v2 binding with its extension MAC value.
+	 * @return bool Whether the supplied extension MAC authenticates the binding extension.
+	 */
+	public function verifyExtension($binding)
+	{
+		if ($this->extensionKey === null || !isset($binding['binding_extension_mac']) || !is_string($binding['binding_extension_mac'])) {
+			return false;
+		}
+		try {
+			return hash_equals($this->createExtension($binding), $binding['binding_extension_mac']);
+		} catch (\Throwable $exception) {
+			return false;
+		}
 	}
 
 	/**
@@ -103,6 +159,19 @@ class BindingMac
 			CanonicalJson::encode($this->payloadForFields($left, self::$identityFields)),
 			CanonicalJson::encode($this->payloadForFields($right, self::$identityFields))
 		);
+	}
+
+	/**
+	 * @param array<string, mixed> $left
+	 * @param array<string, mixed> $right
+	 * @return bool Whether both bindings carry the same optional field-reference value.
+	 */
+	public function extensionValuesEqual($left, $right)
+	{
+		$leftHasFieldReference = array_key_exists('field_reference', $left);
+		$rightHasFieldReference = array_key_exists('field_reference', $right);
+		return $leftHasFieldReference === $rightHasFieldReference
+			&& (!$leftHasFieldReference || $left['field_reference'] === $right['field_reference']);
 	}
 
 	/**
@@ -133,5 +202,35 @@ class BindingMac
 			$payload[$field] = $binding[$field];
 		}
 		return $payload;
+	}
+
+	/**
+	 * Accept the short-lived pre-release format that added field_reference to
+	 * the base MAC. Released v1 bindings never contained that extension.
+	 *
+	 * @param array<string, mixed> $binding
+	 * @return bool
+	 */
+	private function isLegacyFieldReferenceBinding($binding)
+	{
+		return is_array($binding)
+			&& (int) ($binding['v'] ?? 0) === 1
+			&& array_key_exists('field_reference', $binding);
+	}
+
+	/**
+	 * @param array<string, mixed> $binding
+	 * @return string Base64url-encoded pre-release extension of the v1 base MAC.
+	 */
+	private function createLegacyFieldReferenceMac($binding)
+	{
+		$payload = $this->payloadForFields($binding, self::$definingFields);
+		foreach (self::$legacyExtensionFields as $field) {
+			if (!array_key_exists($field, $binding)) {
+				throw new \UnexpectedValueException("Binding property '{$field}' is missing.");
+			}
+			$payload[$field] = $binding[$field];
+		}
+		return Base64Url::encode(hash_hmac('sha256', CanonicalJson::encode($payload), $this->key, true));
 	}
 }

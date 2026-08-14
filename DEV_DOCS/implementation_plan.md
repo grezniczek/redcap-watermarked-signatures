@@ -385,6 +385,7 @@ Derive purpose-specific keys, conceptually:
 K_envelope = HKDF(instance_secret, "sigwm/envelope/v1")
 K_anchor   = HKDF(instance_secret, "sigwm/anchor/v1")
 K_binding  = HKDF(instance_secret, "sigwm/binding/v1")
+K_bind_ext = HKDF(instance_secret, "sigwm/binding-extension/v1")
 K_refs     = HKDF(instance_secret, "sigwm/references/v1")
 ```
 
@@ -480,6 +481,26 @@ binding_mac = HMAC-SHA-256(
 
 This does not place the late-bound values into the image. It protects the stored binding against undetected alteration.
 
+### Binding-format extensions and compatibility
+
+The binding/provenance `v` is distinct from both the visible watermark marker
+(`WM1`) and the signed-envelope version. A later binding format must not change
+the base `binding_mac` payload solely to authenticate a newly added property:
+released older verifiers recompute that base MAC and would reject every new
+signature.
+
+Format v2 therefore retains the exact v1 base-MAC payload and writes the same
+`v: 2` in both the upload and binding events. It adds a separately derived
+`binding_extension_mac` over canonical `v`, `binding_mac`, and
+`field_reference`. The base MAC binds the extension to every v1-defining
+property, while the extension MAC protects the new property. A v2 verifier
+requires both MACs; a v1.0.2 verifier ignores the extra property and can still
+verify the base MAC and upload/binding relationship.
+
+For future authenticated provenance extensions, preserve the previous base-MAC
+schema, bind the extension MAC to the protected base-MAC value, and add an
+explicit regression test using the preceding verifier's base-MAC behavior.
+
 ---
 
 ## 9. Visible watermark design
@@ -521,7 +542,8 @@ TS:2026-07-16T14:32:05Z REF:PUBLIC-STUDY-ACRONYM
 
 `TS:` is the server-generated UTC capture timestamp, not an assertion of the
 signer's identity or a qualified signing time. `REF:` appears on the second
-line only when the optional public project reference is configured.
+line when an optional project reference or field-specific reference is
+configured.
 
 The footer must not contain:
 
@@ -535,13 +557,15 @@ The footer must not contain:
 It may contain a configurable project or institution logo, but the identifiers must remain meaningful without the logo.
 
 An optional project-level **public project reference** may be printed as
-`REF:<reference>`. This is a short, opt-in acronym or identifier, not the
-REDCap PID or project title. It is a visual recognition aid only and does not
-replace the cryptographic anchor. The value must be capped at 30 safe ASCII
-characters and snapshotted in upload provenance because changing the setting
-must not rewrite the meaning of an existing image. Since it is visible in image
-exports and screenshots, it must be left blank when the reference would reveal
-sensitive project information.
+`REF:<project-reference>` or, with a field mark, as
+`REF:<project-reference>:<field-reference>`. This is a short, opt-in acronym or
+identifier, not the REDCap PID or project title. It is a visual recognition aid
+only and does not replace the cryptographic anchor. New project references are
+capped at 20 safe ASCII characters and field references at 16; both are
+snapshotted in upload provenance because changing configuration must not rewrite
+the meaning of an existing image. Since the values are visible in image exports
+and screenshots, they must be left blank when they would reveal sensitive
+project information.
 
 ## 9.3 Rendering order
 
@@ -639,12 +663,13 @@ Example payload:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "capture_ref": "S:5N6T-P4WC-X8Q2-Z",
   "context_ref": "C:8D3Q-K7H2-R5NW-V",
   "record_ref": "R-7M4K-2C9P",
   "capture_origin": "data_entry",
   "capture_username": "alice",
+  "field_reference": "CONSENT",
   "anchor": "A:7K4M-P8Q2-X5DN-R7CW",
   "pid": 123,
   "event_id": 417,
@@ -766,7 +791,7 @@ Example payload:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "anchor": "A:7K4M-P8Q2-X5DN-R7CW",
   "capture_ref": "S:5N6T-P4WC-X8Q2-Z",
   "context_ref": "C:8D3Q-K7H2-R5NW-V",
@@ -786,6 +811,8 @@ Example payload:
   "bound_at": "2026-07-16T14:34:11.912Z",
   "file_sha256": "hex-or-base64url-digest",
   "binding_mac": "base64url-hmac",
+  "binding_extension_mac": "base64url-hmac",
+  "field_reference": "CONSENT",
   "watermark_version": 1
 }
 ```

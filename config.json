@@ -68,7 +68,7 @@
         },
         {
             "key": "public-project-reference",
-            "name": "Public project reference printed as REF: on every new watermarked signature (optional; 1–30 ASCII letters, digits, spaces, dots, hyphens, underscores, or slashes). This is visible on exported images and should not reveal sensitive project information.",
+            "name": "Public project reference printed as REF: on every new watermarked signature (optional; 1–20 ASCII letters, digits, spaces, dots, hyphens, underscores, or slashes). This is visible on exported images and should not reveal sensitive project information.",
             "tt_name": "config_public_project_reference",
             "type": "text",
             "hidden": true

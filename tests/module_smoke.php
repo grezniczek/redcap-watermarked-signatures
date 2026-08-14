@@ -408,11 +408,22 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     {
         $payloads = array();
         foreach ($module->logs as $log) {
-            if ($log[0] === $message) {
+            if ($log[0] === $message && isset($log[1]['payload_json'])) {
                 $payloads[] = json_decode($log[1]['payload_json'], true);
             }
         }
         return $payloads;
+    }
+
+    function countLogsForMessage($module, $message)
+    {
+        $count = 0;
+        foreach ($module->logs as $log) {
+            if ($log[0] === $message) {
+                $count++;
+            }
+        }
+        return $count;
     }
 
     function injectedConfig($html)
@@ -601,6 +612,20 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert(!$ajaxSettingsValidation['ok'], 'Project settings AJAX validation accepted invalid values.');
     moduleAssert($ajaxSettingsValidation['errors']['public_project_reference'] === 'settings_error_public_project_reference', 'Project settings AJAX validation did not identify an invalid public reference.');
     moduleAssert($ajaxSettingsValidation['errors']['background_image_rotation'] === 'settings_error_background_rotation', 'Project settings AJAX validation did not identify an invalid rotation.');
+    $maximumProjectReferenceValidation = $projectSettingsModule->validate_project_settings_input(123, array(
+        'retention_days' => '17',
+        'public_project_reference' => str_repeat('P', Renderer::MAX_PROJECT_REFERENCE_LENGTH),
+        'background_image_mode' => 'redcap',
+        'background_image_rotation' => '-30'
+    ));
+    moduleAssert($maximumProjectReferenceValidation['ok'], 'Project settings rejected a 20-character public project reference.');
+    $oversizedProjectReferenceValidation = $projectSettingsModule->validate_project_settings_input(123, array(
+        'retention_days' => '17',
+        'public_project_reference' => str_repeat('P', Renderer::MAX_PROJECT_REFERENCE_LENGTH + 1),
+        'background_image_mode' => 'redcap',
+        'background_image_rotation' => '-30'
+    ));
+    moduleAssert($oversizedProjectReferenceValidation['errors']['public_project_reference'] === 'settings_error_public_project_reference', 'Project settings accepted a public project reference longer than 20 characters.');
     $retainedImageEdocId = $projectSettingsModule->projectSettings['custom-background-image'];
     $redcapSettings = $projectSettingsModule->save_project_settings(123, array(
         'retention_days' => '17',
@@ -674,7 +699,10 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     $multiEnvelopeModule = new WatermarkedSignaturesExternalModule();
     $multiEnvelopeModule->framework = new FakeFramework();
     $multiEnvelopeModule->projectSettings['public-project-reference'] = 'SIGWM-TEST';
-    setPrivateProperty($multiEnvelopeModule, 'proj', new FakeProject(null, true));
+    $multiEnvelopeProject = new FakeProject(null, true);
+    $multiEnvelopeProject->metadata['participant_signature']['misc'] = '@WATERMARKED-SIGNATURE="CONSENT"';
+    $multiEnvelopeProject->metadata['witness_signature']['misc'] = '@WATERMARKED-SIGNATURE="WITNESS"';
+    setPrivateProperty($multiEnvelopeModule, 'proj', $multiEnvelopeProject);
     setPrivateProperty($multiEnvelopeModule, 'project_id', 123);
     ob_start();
     invokePrivate($multiEnvelopeModule, 'inject_capture_envelopes', array('consent', 417, 'data_entry'));
@@ -691,6 +719,111 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($witnessEnvelope['field'] === 'witness_signature', 'Witness envelope was scoped to the wrong field.');
     moduleAssert($participantEnvelope['context_ref'] !== $witnessEnvelope['context_ref'], 'Signature fields shared a context reference.');
     moduleAssert($participantEnvelope['project_reference'] === 'SIGWM-TEST' && $witnessEnvelope['project_reference'] === 'SIGWM-TEST', 'Configured public project reference was not signed into every field envelope.');
+    moduleAssert($participantEnvelope['field_reference'] === 'CONSENT' && $witnessEnvelope['field_reference'] === 'WITNESS', 'Field references were not signed into their respective envelopes.');
+
+    $fieldReferenceUpload = captureSignatureUpload(
+        $multiEnvelopeModule,
+        $multiEnvelopeConfig['envelopes']['participant_signature'],
+        $originalPng,
+        99507
+    );
+    moduleAssert($fieldReferenceUpload['v'] === WatermarkedSignaturesExternalModule::BINDING_PROVENANCE_VERSION, 'New upload provenance did not use the binding format version.');
+    moduleAssert($fieldReferenceUpload['field_reference'] === 'CONSENT', 'Upload provenance did not retain the signed field reference.');
+    REDCap::$data = array(
+        'FIELD-REFERENCE' => array(417 => array('participant_signature' => '99507'))
+    );
+    $multiEnvelopeModule->redcap_save_record(123, 'FIELD-REFERENCE', 'consent', 417, null, null, null, 1);
+    $fieldReferenceBinding = payloadsForMessage($multiEnvelopeModule, 'sigwm_bind')[0];
+    moduleAssert($fieldReferenceBinding['v'] === WatermarkedSignaturesExternalModule::BINDING_PROVENANCE_VERSION, 'New binding did not match the upload binding format version.');
+    moduleAssert($fieldReferenceBinding['field_reference'] === 'CONSENT', 'Binding did not retain the authenticated field reference.');
+    moduleAssert(isset($fieldReferenceBinding['binding_extension_mac']), 'Binding did not store the field-reference extension MAC.');
+
+    $invalidFieldReferenceProject = new FakeProject();
+    $invalidFieldReferenceProject->metadata['participant_signature']['misc'] = '@WATERMARKED-SIGNATURE="ENHANCED-MIGHTILY"';
+    $invalidFieldReferenceModule = new WatermarkedSignaturesExternalModule();
+    $invalidFieldReferenceModule->framework = new FakeFramework();
+    setPrivateProperty($invalidFieldReferenceModule, 'proj', $invalidFieldReferenceProject);
+    setPrivateProperty($invalidFieldReferenceModule, 'project_id', 123);
+    ob_start();
+    invokePrivate($invalidFieldReferenceModule, 'inject_capture_envelopes', array('consent', 417, 'data_entry'));
+    $invalidFieldReferenceConfig = injectedConfig(ob_get_clean());
+    $invalidFieldReferenceEnvelope = $signer->verify($invalidFieldReferenceConfig['envelopes']['participant_signature']);
+    moduleAssert($invalidFieldReferenceEnvelope['field_reference'] === null, 'An invalid field-reference action-tag parameter was not omitted.');
+    moduleAssert($invalidFieldReferenceEnvelope['field_reference_error'] === 'field_reference_too_long', 'An oversized field-reference action-tag parameter was not identified.');
+    moduleAssert($invalidFieldReferenceEnvelope['field_reference_error_value'] === 'ENHANCED-MIGHTILY' && $invalidFieldReferenceEnvelope['field_reference_error_length'] === 17, 'An oversized field-reference action-tag parameter did not retain its diagnostic value and length.');
+    $invalidFieldReferenceUpload = captureSignatureUpload(
+        $invalidFieldReferenceModule,
+        $invalidFieldReferenceConfig['envelopes']['participant_signature'],
+        $originalPng,
+        99508
+    );
+    moduleAssert($invalidFieldReferenceUpload['field_reference'] === null, 'An invalid field-reference action-tag parameter reached upload provenance.');
+    moduleAssert(countLogsForMessage($invalidFieldReferenceModule, 'sigwm_error_field_reference') === 1, 'An invalid field-reference action-tag parameter was not logged during capture.');
+    foreach ($invalidFieldReferenceModule->logs as $log) {
+        if ($log[0] !== 'sigwm_error_field_reference') {
+            continue;
+        }
+        moduleAssert($log[1]['field_reference_error'] === 'field_reference_too_long', 'The field-reference diagnostic did not record the precise error code.');
+        moduleAssert($log[1]['field_reference_value'] === 'ENHANCED-MIGHTILY' && $log[1]['field_reference_length'] === 17 && $log[1]['field_reference_maximum_length'] === 16, 'The field-reference diagnostic did not record the configured value, length, and limit.');
+        moduleAssert(
+            json_decode($log[1]['field_reference_diagnostics'], true) == array(array(
+                'code' => 'field_reference_too_long',
+                'positions' => array(17),
+                'maximum_length' => 16
+            )),
+            'The field-reference diagnostic log did not preserve the offending character position.'
+        );
+        break;
+    }
+
+    $duplicateConfiguration = invokePrivate($invalidFieldReferenceModule, 'signature_field_configuration', array(array(
+        'element_type' => 'file',
+        'element_validation_type' => 'signature',
+        'misc' => '@WATERMARKED-SIGNATURE @WATERMARKED-SIGNATURE="CONSENT"'
+    )));
+    moduleAssert($duplicateConfiguration['configured'] && $duplicateConfiguration['field_reference'] === null && $duplicateConfiguration['field_reference_error'] === 'multiple_action_tags', 'Duplicate watermark action tags were not rejected as a field-reference configuration error.');
+
+    $maximumFieldConfiguration = invokePrivate($invalidFieldReferenceModule, 'signature_field_configuration', array(array(
+        'element_type' => 'file',
+        'element_validation_type' => 'signature',
+        'misc' => '@WATERMARKED-SIGNATURE="' . str_repeat('F', Renderer::MAX_FIELD_REFERENCE_LENGTH) . '"'
+    )));
+    moduleAssert($maximumFieldConfiguration['field_reference'] === str_repeat('F', Renderer::MAX_FIELD_REFERENCE_LENGTH), 'A 16-character field reference was rejected.');
+
+    $multiDiagnosticConfiguration = invokePrivate($invalidFieldReferenceModule, 'signature_field_configuration', array(array(
+        'element_type' => 'file',
+        'element_validation_type' => 'signature',
+        'misc' => '@WATERMARKED-SIGNATURE="!A@B#12345678901234"'
+    )));
+    moduleAssert(
+        $multiDiagnosticConfiguration['field_reference_error_value'] === '!A@B#12345678901234'
+        && $multiDiagnosticConfiguration['field_reference_error_length'] === 19,
+        'The action-tag diagnostic did not retain the original parameter value and character length.'
+    );
+    moduleAssert(
+        $multiDiagnosticConfiguration['field_reference_diagnostics'] === array(
+            array('code' => 'field_reference_too_long', 'positions' => array(17, 18, 19), 'maximum_length' => 16),
+            array('code' => 'field_reference_invalid_start', 'positions' => array(1), 'maximum_length' => null),
+            array('code' => 'field_reference_invalid_characters', 'positions' => array(1, 3, 5), 'maximum_length' => null)
+        ),
+        'The action-tag diagnostic did not report every invalid character and over-limit character position.'
+    );
+
+    $invalidFieldReferenceProject->metadata['ordinary_upload'] = array(
+        'form_name' => 'consent',
+        'element_type' => 'file',
+        'element_validation_type' => '',
+        'misc' => '@WATERMARKED-SIGNATURE="NOT-APPLIED"'
+    );
+    $actionTagAudit = $invalidFieldReferenceModule->get_project_action_tag_audit(123);
+    moduleAssert(count($actionTagAudit) === 2, 'The project action-tag audit did not report every invalid tag.');
+    moduleAssert($actionTagAudit[0]['field'] === 'participant_signature' && $actionTagAudit[0]['code'] === 'field_reference_too_long' && $actionTagAudit[0]['reference_length'] === 17 && $actionTagAudit[0]['maximum_length'] === 16, 'The action-tag audit did not report the oversized field reference precisely.');
+    moduleAssert($actionTagAudit[1]['field'] === 'ordinary_upload' && $actionTagAudit[1]['code'] === 'action_tag_unsupported_field', 'The action-tag audit did not report a tag on an unsupported field.');
+    moduleAssert(
+        $actionTagAudit[0]['reference_value'] === 'ENHANCED-MIGHTILY'
+        && $actionTagAudit[0]['diagnostics'][0]['positions'] === array(17),
+        'The action-tag audit did not preserve the original value and identify the over-limit character.'
+    );
 
     $verificationLink = array('key' => 'signature-verification', 'url' => 'pages/verify-signature.php');
     $projectSettingsLink = array('key' => 'project-settings', 'url' => 'pages/project-settings.php');
@@ -901,11 +1034,13 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert(strpos($response, "stopUpload(1,'participant_signature','98137'") !== false, 'The iframe response was altered.');
     $uploadProvenance = json_decode($module->logs[0][1]['payload_json'], true);
     moduleAssert($uploadProvenance['file_sha256'] === hash('sha256', $watermarkedPng), 'Provenance digest does not cover the final PNG.');
+    moduleAssert($uploadProvenance['v'] === WatermarkedSignaturesExternalModule::BINDING_PROVENANCE_VERSION, 'Provenance did not use the current binding format version.');
     moduleAssert($uploadProvenance['watermark_version'] === 1, 'Provenance did not retain the WM1 format version.');
     moduleAssert((bool) preg_match('/Z$/', $uploadProvenance['captured_at']), 'Provenance timestamp is not UTC.');
     moduleAssert($uploadProvenance['capture_origin'] === 'data_entry', 'Upload provenance did not retain the data-entry origin.');
     moduleAssert($uploadProvenance['capture_username'] === 'data-entry-user', 'Upload provenance did not retain the current username.');
     moduleAssert($uploadProvenance['project_reference'] === 'SIGWM-TEST', 'Upload provenance did not retain the public project reference snapshot.');
+    moduleAssert($uploadProvenance['field_reference'] === null, 'A legacy envelope without a field reference did not remain valid.');
 
     $responseFailureModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($responseFailureModule, 'proj', new FakeProject());
@@ -970,6 +1105,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($storedBinding['capture_username'] === 'data-entry-user' && $storedBinding['save_username'] === 'data-entry-user', 'Classic binding did not retain its username audit fields.');
     moduleAssert($storedBinding['project_reference'] === 'SIGWM-TEST', 'Binding did not retain the public project reference snapshot.');
     moduleAssert(isset($storedBinding['binding_mac']), 'Binding MAC was not stored.');
+    moduleAssert(isset($storedBinding['binding_extension_mac']), 'Binding extension MAC was not stored.');
 
     $module->redcap_save_record(123, 'R-001', 'consent', 417, null, null, null, 1);
     moduleAssert(count($module->logs) === 2, 'Repeated save appended a duplicate binding.');
