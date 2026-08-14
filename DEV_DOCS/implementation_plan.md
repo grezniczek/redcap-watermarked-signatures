@@ -385,6 +385,7 @@ Derive purpose-specific keys, conceptually:
 K_envelope = HKDF(instance_secret, "sigwm/envelope/v1")
 K_anchor   = HKDF(instance_secret, "sigwm/anchor/v1")
 K_binding  = HKDF(instance_secret, "sigwm/binding/v1")
+K_bind_ext = HKDF(instance_secret, "sigwm/binding-extension/v1")
 K_refs     = HKDF(instance_secret, "sigwm/references/v1")
 ```
 
@@ -479,6 +480,26 @@ binding_mac = HMAC-SHA-256(
 ```
 
 This does not place the late-bound values into the image. It protects the stored binding against undetected alteration.
+
+### Binding-format extensions and compatibility
+
+The binding/provenance `v` is distinct from both the visible watermark marker
+(`WM1`) and the signed-envelope version. A later binding format must not change
+the base `binding_mac` payload solely to authenticate a newly added property:
+released older verifiers recompute that base MAC and would reject every new
+signature.
+
+Format v2 therefore retains the exact v1 base-MAC payload and writes the same
+`v: 2` in both the upload and binding events. It adds a separately derived
+`binding_extension_mac` over canonical `v`, `binding_mac`, and
+`field_reference`. The base MAC binds the extension to every v1-defining
+property, while the extension MAC protects the new property. A v2 verifier
+requires both MACs; a v1.0.2 verifier ignores the extra property and can still
+verify the base MAC and upload/binding relationship.
+
+For future authenticated provenance extensions, preserve the previous base-MAC
+schema, bind the extension MAC to the protected base-MAC value, and add an
+explicit regression test using the preceding verifier's base-MAC behavior.
 
 ---
 
@@ -642,12 +663,13 @@ Example payload:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "capture_ref": "S:5N6T-P4WC-X8Q2-Z",
   "context_ref": "C:8D3Q-K7H2-R5NW-V",
   "record_ref": "R-7M4K-2C9P",
   "capture_origin": "data_entry",
   "capture_username": "alice",
+  "field_reference": "CONSENT",
   "anchor": "A:7K4M-P8Q2-X5DN-R7CW",
   "pid": 123,
   "event_id": 417,
@@ -769,7 +791,7 @@ Example payload:
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "anchor": "A:7K4M-P8Q2-X5DN-R7CW",
   "capture_ref": "S:5N6T-P4WC-X8Q2-Z",
   "context_ref": "C:8D3Q-K7H2-R5NW-V",
@@ -789,6 +811,8 @@ Example payload:
   "bound_at": "2026-07-16T14:34:11.912Z",
   "file_sha256": "hex-or-base64url-digest",
   "binding_mac": "base64url-hmac",
+  "binding_extension_mac": "base64url-hmac",
+  "field_reference": "CONSENT",
   "watermark_version": 1
 }
 ```

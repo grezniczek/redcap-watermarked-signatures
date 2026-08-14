@@ -58,6 +58,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 	const ACTIONTAG = "@WATERMARKED-SIGNATURE";
 	const ENVELOPE_VERSION = 1;
+	// Version of the matched upload/binding provenance pair. This is distinct
+	// from the visible WM1 watermark and signed-envelope format versions.
+	const BINDING_PROVENANCE_VERSION = 2;
 	const ENVELOPE_TTL_SECONDS = 14400;
 	const ENVELOPE_MAX_TTL_SECONDS = 28800;
 	const CLOCK_SKEW_SECONDS = 300;
@@ -277,7 +280,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 			try {
 				$this->framework->setProjectId($projectId);
-				$repository = new LogRepository($this, new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO)));
+				$repository = new LogRepository($this, $this->binding_mac());
 				// EM log timestamps are written with the database's current
 				// application time; use REDCap/PHP's configured local time
 				// rather than serializing this cutoff as UTC.
@@ -533,7 +536,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			throw new \RuntimeException("The current user may not access signature verification in this project.");
 		}
 
-		$bindingMac = new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO));
+		$bindingMac = $this->binding_mac();
 		$repository = new LogRepository($this, $bindingMac);
 		$service = new VerificationService(
 			$repository,
@@ -553,7 +556,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			throw new \RuntimeException("Administrator access is required for global signature verification.");
 		}
 
-		$bindingMac = new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO));
+		$bindingMac = $this->binding_mac();
 		$repository = new LogRepository($this, $bindingMac);
 		$service = new VerificationService(
 			$repository,
@@ -569,6 +572,20 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 
     #region Private Helpers
+
+	/**
+	 * Build the version-aware binding MAC helper. The base key intentionally
+	 * remains the v1 key so released v1.0.2 code can verify format-v2 bindings.
+	 *
+	 * @return BindingMac
+	 */
+	private function binding_mac()
+	{
+		return new BindingMac(
+			KeyDerivation::derive(KeyDerivation::BINDING_INFO),
+			KeyDerivation::derive(KeyDerivation::BINDING_EXTENSION_INFO)
+		);
+	}
 
 	/**
 	 * @param string $record
@@ -602,7 +619,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			"events" => array((int) $eventId)
 		));
 		$persistedValues = $savedContext->extractFieldValues($data, $fields);
-		$bindingMac = new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO));
+		$bindingMac = $this->binding_mac();
 		$repository = new LogRepository($this, $bindingMac);
 
 		foreach ($persistedValues as $field => $value) {
@@ -642,7 +659,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				}
 				$binding = array_merge(
 					array(
-						"v" => 1,
+						"v" => (int) ($upload['v'] ?? 1),
 						"anchor" => $upload["anchor"],
 						"capture_ref" => $upload["capture_ref"],
 						"context_ref" => $upload["context_ref"],
@@ -842,7 +859,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			return;
 		}
 
-		$repository = new LogRepository($this, new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO)));
+		$repository = new LogRepository($this, $this->binding_mac());
 		// REDCap has already renamed the indexed record column by the time
 		// redcap_save_record runs. If no signature binding moved with it,
 		// there is no module history that needs a durable rename event.
@@ -898,7 +915,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	private function capture_record_rename_response($requestedOldRecord, $requestedNewRecord, $renameOrigin)
 	{
 		try {
-			$repository = new LogRepository($this, new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO)));
+			$repository = new LogRepository($this, $this->binding_mac());
 			// Resolve the stored spelling before REDCap changes the record.
 			// This also makes the capture a no-op for records with no module
 			// binding to preserve.
@@ -919,7 +936,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		ob_start(function ($output) use ($module, $oldRecord, $requestedNewRecord, $renameOrigin, $renameUsername) {
 			if (trim($output) === '1') {
 				try {
-					$repository = new LogRepository($module, new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO)));
+					$repository = new LogRepository($module, $module->binding_mac());
 					// Looking this up after the controller completed gives us
 					// REDCap's final spelling in the multi-arm case.
 					$newRecord = $repository->findBoundRecordId($requestedNewRecord);
@@ -1119,7 +1136,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 		if (\ExternalModules\ExternalModules::isNoAuth()) {
 			try {
-				$repository = new LogRepository($this, new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO)));
+				$repository = new LogRepository($this, $this->binding_mac());
 				if (!$repository->reserveEnvelopeNonce($payload['nonce'])) {
 					throw new \UnexpectedValueException('The signed signature envelope has already been used.');
 				}
@@ -1164,7 +1181,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 		$_POST["myfile_base64"] = base64_encode($watermarkedPng);
 		$provenance = array(
-			"v" => 1,
+			"v" => self::BINDING_PROVENANCE_VERSION,
 			"capture_ref" => $captureReference,
 			"context_ref" => $payload["context_ref"],
 			"record_ref" => isset($payload["record_ref"]) ? $payload["record_ref"] : null,

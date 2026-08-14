@@ -91,6 +91,7 @@ $statusPresentation = array(
 );
 $checkLabels = array(
     'binding_mac' => $module->framework->tt('ui_check_binding_mac'), // Binding MAC
+    'binding_extension_mac' => $module->framework->tt('ui_check_binding_extension_mac'), // Binding extension MAC
     'binding_upload' => $module->framework->tt('ui_check_binding_upload'), // Upload/binding relationship
     'anchor' => $module->framework->tt('ui_check_anchor'), // Stable-scope anchor
     'edoc_exists' => $module->framework->tt('ui_check_edoc_exists'), // Edoc exists

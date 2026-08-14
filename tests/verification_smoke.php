@@ -233,7 +233,7 @@ function verificationUpload($captureReference, $edocId, $bytes)
 function verificationBinding($upload, BindingMac $mac)
 {
     $binding = array(
-        'v' => 1,
+        'v' => $upload['v'],
         'anchor' => $upload['anchor'],
         'capture_ref' => $upload['capture_ref'],
         'context_ref' => $upload['context_ref'],
@@ -256,7 +256,13 @@ function verificationBinding($upload, BindingMac $mac)
         'file_sha256' => $upload['file_sha256'],
         'watermark_version' => $upload['watermark_version']
     );
+    if (array_key_exists('field_reference', $upload)) {
+        $binding['field_reference'] = $upload['field_reference'];
+    }
     $binding['binding_mac'] = $mac->create($binding);
+    if ((int) $binding['v'] >= 2) {
+        $binding['binding_extension_mac'] = $mac->createExtension($binding);
+    }
     return $binding;
 }
 
@@ -267,7 +273,10 @@ function verificationHarness($upload, $binding, $bytes)
     if ($binding !== null) {
         $module->addEvent('sigwm_bind', $binding);
     }
-    $mac = new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO));
+    $mac = new BindingMac(
+        KeyDerivation::derive(KeyDerivation::BINDING_INFO),
+        KeyDerivation::derive(KeyDerivation::BINDING_EXTENSION_INFO)
+    );
     $edocs = new VerificationEdocReader();
     $edocs->files[$upload['edoc_id']] = array(
         'exists' => true,
@@ -284,7 +293,10 @@ function verificationHarness($upload, $binding, $bytes)
 
 $GLOBALS['salt'] = 'redcap-test-installation-salt';
 $GLOBALS['salt2'] = 'redcap-test-installation-salt-2';
-$mac = new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO));
+$mac = new BindingMac(
+    KeyDerivation::derive(KeyDerivation::BINDING_INFO),
+    KeyDerivation::derive(KeyDerivation::BINDING_EXTENSION_INFO)
+);
 $bytes = 'final-watermarked-png-bytes';
 $captureReference = ReferenceGenerator::captureReference();
 $upload = verificationUpload($captureReference, 98137, $bytes);
@@ -306,6 +318,29 @@ $history = (new LogRepository($module, $mac))->findDiagnosticEventsByEdocId(9813
 verificationAssert(count($history) === 2, 'Administrator diagnostic lookup did not return upload and binding history.');
 verificationAssert($history[0]['message'] === 'sigwm_upload' && $history[1]['message'] === 'sigwm_bind', 'Administrator diagnostic lookup returned an unexpected history.');
 verificationAssert(!array_key_exists('payload_json', $history[0]), 'Administrator diagnostic lookup returned raw payload JSON.');
+
+$v2Reference = ReferenceGenerator::captureReference();
+$v2Upload = verificationUpload($v2Reference, 98143, $bytes);
+$v2Upload['v'] = 2;
+$v2Upload['field_reference'] = 'CONSENT';
+$v2Binding = verificationBinding($v2Upload, $mac);
+list($v2Service) = verificationHarness($v2Upload, $v2Binding, $bytes);
+$v2Result = $v2Service->verify($v2Reference, 123);
+verificationAssert($v2Result['status'] === 'valid_current', 'Valid format-v2 signature did not verify.');
+verificationAssert($v2Result['checks']['binding_extension_mac'] === true, 'Format-v2 extension MAC was not verified.');
+$v102CompatibleMac = new BindingMac(KeyDerivation::derive(KeyDerivation::BINDING_INFO));
+verificationAssert($v102CompatibleMac->verify($v2Binding), 'A v1.0.2-compatible base verifier rejected a format-v2 binding.');
+$tamperedV2Binding = $v2Binding;
+$tamperedV2Binding['field_reference'] = 'WITHDRAWN';
+list($tamperedV2Service) = verificationHarness($v2Upload, $tamperedV2Binding, $bytes);
+$tamperedV2Result = $tamperedV2Service->verify($v2Reference, 123);
+verificationAssert(
+    $tamperedV2Result['status'] === 'invalid'
+    && $tamperedV2Result['checks']['binding_mac'] === true
+    && $tamperedV2Result['checks']['binding_extension_mac'] === false
+    && in_array('binding_extension_mac_mismatch', $tamperedV2Result['issues'], true),
+    'Changed format-v2 field reference did not fail its extension MAC.'
+);
 
 $renamedReference = ReferenceGenerator::captureReference();
 $renamedUpload = verificationUpload($renamedReference, 98139, $bytes);

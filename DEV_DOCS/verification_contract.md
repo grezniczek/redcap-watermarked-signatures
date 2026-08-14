@@ -51,6 +51,7 @@ Primary statuses are:
 The independent checks are:
 
 - binding MAC validation;
+- binding-extension MAC validation for format-v2 bindings;
 - upload-to-binding relationship validation;
 - stable-scope anchor recomputation;
 - edoc existence;
@@ -72,9 +73,24 @@ issue; callers must also inspect `integrity`, `checks`, and `issues`.
 6. Recompute SHA-256 over the current edoc bytes without returning those bytes
    in the result.
 7. Look up the one-time binding by edoc ID.
-8. Validate its MAC and its immutable relationship to upload provenance.
+8. Validate its base MAC, required format-v2 extension MAC, and immutable
+   relationship to upload provenance.
 9. Only after the binding is trusted, read the bound REDCap field at the current
    record ID and compare its current edoc value.
+
+## Binding-format compatibility
+
+The upload/binding provenance version is independent of `WM1` and the signed
+envelope version. Format v2 preserves the released v1 `binding_mac` payload so
+that a v1.0.2 verifier can still validate a v2 binding's base MAC and matched
+upload/binding relationship. It authenticates `field_reference` using a
+separately derived extension MAC over the provenance version, base MAC, and
+field reference. Current verification requires that extension MAC for v2;
+legacy v1 bindings remain valid without one.
+
+Future authenticated binding extensions must preserve the prior base-MAC
+schema, bind their extension MAC to the protected base MAC, and include a
+regression test of the previous verifier's base-MAC behavior.
 
 The current-value adapter handles classic event data, repeating instruments,
 and repeating events using the normalized repeat data stored in the binding.

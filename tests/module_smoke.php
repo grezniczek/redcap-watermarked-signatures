@@ -727,13 +727,16 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         $originalPng,
         99507
     );
+    moduleAssert($fieldReferenceUpload['v'] === WatermarkedSignaturesExternalModule::BINDING_PROVENANCE_VERSION, 'New upload provenance did not use the binding format version.');
     moduleAssert($fieldReferenceUpload['field_reference'] === 'CONSENT', 'Upload provenance did not retain the signed field reference.');
     REDCap::$data = array(
         'FIELD-REFERENCE' => array(417 => array('participant_signature' => '99507'))
     );
     $multiEnvelopeModule->redcap_save_record(123, 'FIELD-REFERENCE', 'consent', 417, null, null, null, 1);
     $fieldReferenceBinding = payloadsForMessage($multiEnvelopeModule, 'sigwm_bind')[0];
+    moduleAssert($fieldReferenceBinding['v'] === WatermarkedSignaturesExternalModule::BINDING_PROVENANCE_VERSION, 'New binding did not match the upload binding format version.');
     moduleAssert($fieldReferenceBinding['field_reference'] === 'CONSENT', 'Binding did not retain the authenticated field reference.');
+    moduleAssert(isset($fieldReferenceBinding['binding_extension_mac']), 'Binding did not store the field-reference extension MAC.');
 
     $invalidFieldReferenceProject = new FakeProject();
     $invalidFieldReferenceProject->metadata['participant_signature']['misc'] = '@WATERMARKED-SIGNATURE="ENHANCED-MIGHTILY"';
@@ -1031,6 +1034,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert(strpos($response, "stopUpload(1,'participant_signature','98137'") !== false, 'The iframe response was altered.');
     $uploadProvenance = json_decode($module->logs[0][1]['payload_json'], true);
     moduleAssert($uploadProvenance['file_sha256'] === hash('sha256', $watermarkedPng), 'Provenance digest does not cover the final PNG.');
+    moduleAssert($uploadProvenance['v'] === WatermarkedSignaturesExternalModule::BINDING_PROVENANCE_VERSION, 'Provenance did not use the current binding format version.');
     moduleAssert($uploadProvenance['watermark_version'] === 1, 'Provenance did not retain the WM1 format version.');
     moduleAssert((bool) preg_match('/Z$/', $uploadProvenance['captured_at']), 'Provenance timestamp is not UTC.');
     moduleAssert($uploadProvenance['capture_origin'] === 'data_entry', 'Upload provenance did not retain the data-entry origin.');
@@ -1101,6 +1105,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($storedBinding['capture_username'] === 'data-entry-user' && $storedBinding['save_username'] === 'data-entry-user', 'Classic binding did not retain its username audit fields.');
     moduleAssert($storedBinding['project_reference'] === 'SIGWM-TEST', 'Binding did not retain the public project reference snapshot.');
     moduleAssert(isset($storedBinding['binding_mac']), 'Binding MAC was not stored.');
+    moduleAssert(isset($storedBinding['binding_extension_mac']), 'Binding extension MAC was not stored.');
 
     $module->redcap_save_record(123, 'R-001', 'consent', 417, null, null, null, 1);
     moduleAssert(count($module->logs) === 2, 'Repeated save appended a duplicate binding.');

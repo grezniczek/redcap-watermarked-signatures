@@ -321,16 +321,20 @@ class LogRepository
 				}
 				$event = $binding;
 				$event['binding_mac'] = $this->bindingMac->create($event);
+				if ($this->requiresBindingExtension($event)) {
+					$event['binding_extension_mac'] = $this->bindingMac->createExtension($event);
+				}
 				$this->appendBinding($event);
 				return self::RESULT_BOUND;
 			}
 
-			if (!$this->bindingMac->verify($existing)) {
+			if (!$this->bindingMac->verify($existing) || !$this->bindingExtensionIsValid($existing)) {
 				$this->appendBindingMacError($existing, $binding);
 				return self::RESULT_INVALID_EXISTING_MAC;
 			}
 
-			if ($this->bindingMac->equals($existing, $binding)) {
+			if ($this->bindingMac->equals($existing, $binding)
+				&& $this->bindingMac->extensionValuesEqual($existing, $binding)) {
 				return self::RESULT_IDEMPOTENT;
 			}
 
@@ -424,7 +428,7 @@ class LogRepository
 	}
 
 	/**
-	 * @param array<string, mixed> $event Binding with its computed binding_mac.
+	 * @param array<string, mixed> $event Binding with its computed MACs.
 	 * @return void
 	 */
 	private function appendBinding($event)
@@ -444,9 +448,28 @@ class LogRepository
 			'field' => $event['field'],
 			'edoc_id' => $event['edoc_id'],
 			'binding_mac' => $event['binding_mac'],
+			'binding_extension_mac' => $event['binding_extension_mac'] ?? null,
 			'bound_at' => $event['bound_at'],
 			'payload_json' => CanonicalJson::encode($event)
 		));
+	}
+
+	/**
+	 * @param array<string, mixed> $binding
+	 * @return bool Whether the binding format requires an extension MAC.
+	 */
+	private function requiresBindingExtension($binding)
+	{
+		return is_array($binding) && (int) ($binding['v'] ?? 0) >= 2;
+	}
+
+	/**
+	 * @param array<string, mixed> $binding
+	 * @return bool Whether a required extension MAC is valid.
+	 */
+	private function bindingExtensionIsValid($binding)
+	{
+		return !$this->requiresBindingExtension($binding) || $this->bindingMac->verifyExtension($binding);
 	}
 
 	/**

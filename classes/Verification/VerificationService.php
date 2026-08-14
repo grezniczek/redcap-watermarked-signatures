@@ -127,6 +127,16 @@ class VerificationService
 		if (!$result['checks']['binding_mac']) {
 			$this->addIssue($result, 'binding_mac_mismatch');
 		}
+		if ($this->requiresBindingExtension($binding)) {
+			try {
+				$result['checks']['binding_extension_mac'] = $this->bindingMac->verifyExtension($binding);
+			} catch (Throwable $exception) {
+				$result['checks']['binding_extension_mac'] = false;
+			}
+			if (!$result['checks']['binding_extension_mac']) {
+				$this->addIssue($result, 'binding_extension_mac_mismatch');
+			}
+		}
 
 		$result['checks']['binding_upload'] = $this->bindingMatchesUpload($binding, $upload);
 		if (!$result['checks']['binding_upload']) {
@@ -140,6 +150,7 @@ class VerificationService
 		}
 
 		if ($result['checks']['binding_mac']
+			&& (($result['checks']['binding_extension_mac'] ?? true) === true)
 			&& $result['checks']['binding_upload']
 			&& $result['checks']['anchor']) {
 			$this->checkCurrentField($result, $binding, $edocId);
@@ -299,6 +310,7 @@ class VerificationService
 			'invalid_upload_provenance',
 			'upload_project_mismatch',
 			'binding_mac_mismatch',
+			'binding_extension_mac_mismatch',
 			'binding_upload_mismatch',
 			'anchor_mismatch',
 			'file_digest_mismatch'
@@ -374,6 +386,15 @@ class VerificationService
 			}
 		}
 		return true;
+	}
+
+	/**
+	 * @param array<string, mixed> $binding
+	 * @return bool Whether this binding format requires an extension MAC.
+	 */
+	private function requiresBindingExtension($binding)
+	{
+		return is_array($binding) && (int) ($binding['v'] ?? 0) >= 2;
 	}
 
 	/**
