@@ -141,6 +141,42 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		// Initialize
 		$this->init_proj($project_id);
 		$this->init_config();
+		$this->inject_online_designer_action_tag_audit((int) $project_id);
+	}
+
+	/**
+	 * Add the action-tag audit to the Online Designer for project designers.
+	 * With an instrument selected, the audit is deliberately limited to that
+	 * instrument so it stays close to the fields being edited.
+	 *
+	 * @param int $projectId
+	 * @return void
+	 */
+	private function inject_online_designer_action_tag_audit($projectId)
+	{
+		if (
+			!defined('PAGE')
+			|| PAGE !== 'Design/online_designer.php'
+			|| !$this->can_configure_project_settings($projectId)
+		) {
+			return;
+		}
+
+		$instrument = isset($_GET['page']) && is_string($_GET['page']) && $_GET['page'] !== ''
+			? $_GET['page']
+			: null;
+		$actionTagAudit = $this->project_action_tag_audit($instrument);
+		if (empty($actionTagAudit)) {
+			return;
+		}
+
+		$module = $this;
+		$actionTagAuditFieldLinks = $instrument !== null;
+		$actionTagAuditScope = $instrument === null ? 'project' : 'instrument';
+		echo '<div id="sigwm-online-designer-action-tag-audit" hidden>';
+		require __DIR__ . '/pages/partials/action-tag-audit.php';
+		echo '</div>';
+		InjectionHelper::init($this)->js('js/online-designer-action-tag-audit.js');
 	}
 
 	/**
@@ -342,7 +378,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 	/**
 	 * @param int|string $projectId
-	 * @return array{retention_days:int,public_project_reference:string,background_image_mode:string,background_image_rotation:int,action_tag_audit:array<int, array{field:string,instrument:string,code:string,reference_value:?string,reference_length:?int,maximum_length:?int}>,custom_image:array{available:bool,edoc_id:string,doc_name:?string,width:?int,height:?int,sha256:?string,preview_data_url:?string}}
+	 * @return array{retention_days:int,public_project_reference:string,background_image_mode:string,background_image_rotation:int,action_tag_audit:array<int, array{field:string,instrument:string,code:string,reference_value:?string,reference_length:?int,maximum_length:?int,diagnostics:array<int,array{code:string,positions:array<int,int>,maximum_length:?int}>}>,custom_image:array{available:bool,edoc_id:string,doc_name:?string,width:?int,height:?int,sha256:?string,preview_data_url:?string}}
 	 */
 	public function get_project_settings_state($projectId)
 	{
@@ -377,7 +413,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	 * signature fields, so a project-wide audit cannot silently skip a typo.
 	 *
 	 * @param int|string $projectId
-	 * @return array<int, array{field:string,instrument:string,code:string,reference_value:?string,reference_length:?int,maximum_length:?int}>
+	 * @return array<int, array{field:string,instrument:string,code:string,reference_value:?string,reference_length:?int,maximum_length:?int,diagnostics:array<int,array{code:string,positions:array<int,int>,maximum_length:?int}>}>
 	 */
 	public function get_project_action_tag_audit($projectId)
 	{
@@ -996,6 +1032,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			$fieldReferenceError = $fieldConfiguration['field_reference_error'];
 			$fieldReferenceErrorValue = $fieldConfiguration['field_reference_error_value'];
 			$fieldReferenceErrorLength = $fieldConfiguration['field_reference_error_length'];
+			$fieldReferenceDiagnostics = $fieldConfiguration['field_reference_diagnostics'];
 			if (
 				$fieldReference !== null
 				&& $projectReference !== null
@@ -1003,8 +1040,12 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			) {
 				$fieldReference = null;
 				$fieldReferenceError = 'project_reference_too_long';
-				$fieldReferenceErrorValue = $this->field_reference_diagnostic_excerpt($projectReference);
-				$fieldReferenceErrorLength = strlen($projectReference);
+				$fieldReferenceErrorValue = $projectReference;
+				$fieldReferenceErrorLength = $this->reference_character_length($projectReference);
+				$fieldReferenceDiagnostics = $this->reference_length_diagnostics(
+					$projectReference,
+					Renderer::MAX_PROJECT_REFERENCE_LENGTH
+				);
 			}
 			$payload = array(
 				"v" => self::ENVELOPE_VERSION,
@@ -1023,6 +1064,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				"field_reference_error" => $fieldReferenceError,
 				"field_reference_error_value" => $fieldReferenceErrorValue,
 				"field_reference_error_length" => $fieldReferenceErrorLength,
+				"field_reference_diagnostics" => $fieldReferenceDiagnostics,
 				"issued_at" => $now,
 				"expires_at" => $now + self::ENVELOPE_TTL_SECONDS,
 				"nonce" => ReferenceGenerator::nonce(),
@@ -1131,6 +1173,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			"field_reference_error" => $payload['field_reference_error'] ?? null,
 			"field_reference_error_value" => $payload['field_reference_error_value'] ?? null,
 			"field_reference_error_length" => $payload['field_reference_error_length'] ?? null,
+			"field_reference_diagnostics" => $payload['field_reference_diagnostics'] ?? array(),
 			"capture_origin" => $payload["capture_origin"],
 			"capture_username" => $this->current_username(),
 			"anchor" => $anchor,
@@ -1251,6 +1294,12 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			throw new \UnexpectedValueException('Invalid envelope field reference configuration length.');
 		}
 		if (
+			array_key_exists('field_reference_diagnostics', $payload)
+			&& !$this->is_valid_field_reference_diagnostics($payload['field_reference_diagnostics'])
+		) {
+			throw new \UnexpectedValueException('Invalid envelope field reference configuration diagnostics.');
+		}
+		if (
 			($payload['field_reference_error'] ?? null) !== null
 			&& ($payload['field_reference'] ?? null) !== null
 		) {
@@ -1258,7 +1307,11 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		}
 		if (
 			($payload['field_reference_error'] ?? null) === null
-			&& (($payload['field_reference_error_value'] ?? null) !== null || ($payload['field_reference_error_length'] ?? null) !== null)
+			&& (
+				($payload['field_reference_error_value'] ?? null) !== null
+				|| ($payload['field_reference_error_length'] ?? null) !== null
+				|| !empty($payload['field_reference_diagnostics'])
+			)
 		) {
 			throw new \UnexpectedValueException('An envelope cannot contain field reference diagnostics without a configuration error.');
 		}
@@ -1523,7 +1576,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 	/**
 	 * @param array<string, mixed> $metadata
-	 * @return array{configured:bool,field_reference:?string,field_reference_error:?string,field_reference_error_value:?string,field_reference_error_length:?int}
+	 * @return array{configured:bool,field_reference:?string,field_reference_error:?string,field_reference_error_value:?string,field_reference_error_length:?int,field_reference_diagnostics:array<int,array{code:string,positions:array<int,int>,maximum_length:?int}>}
 	 */
 	private function signature_field_configuration($metadata)
 	{
@@ -1549,18 +1602,18 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			return $this->field_reference_configuration(true, null, 'field_reference_parameter_format');
 		}
 
-		$fieldReference = trim($matches[1]);
-		$error = $this->field_reference_value_error($fieldReference);
-		if ($error !== null) {
+		$fieldReferenceAnalysis = $this->field_reference_value_analysis($matches[1]);
+		if (!empty($fieldReferenceAnalysis['diagnostics'])) {
 			return $this->field_reference_configuration(
 				true,
 				null,
-				$error,
-				$this->field_reference_diagnostic_excerpt($fieldReference),
-				strlen($fieldReference)
+				$fieldReferenceAnalysis['diagnostics'][0]['code'],
+				$fieldReferenceAnalysis['raw_value'],
+				$fieldReferenceAnalysis['reference_length'],
+				$fieldReferenceAnalysis['diagnostics']
 			);
 		}
-		return $this->field_reference_configuration(true, $fieldReference);
+		return $this->field_reference_configuration(true, $fieldReferenceAnalysis['reference_value']);
 	}
 
 	/**
@@ -1569,27 +1622,33 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	 * @param string|null $error
 	 * @param string|null $errorValue
 	 * @param int|null $errorLength
-	 * @return array{configured:bool,field_reference:?string,field_reference_error:?string,field_reference_error_value:?string,field_reference_error_length:?int}
+	 * @param array<int,array{code:string,positions:array<int,int>,maximum_length:?int}> $diagnostics
+	 * @return array{configured:bool,field_reference:?string,field_reference_error:?string,field_reference_error_value:?string,field_reference_error_length:?int,field_reference_diagnostics:array<int,array{code:string,positions:array<int,int>,maximum_length:?int}>}
 	 */
-	private function field_reference_configuration($configured, $fieldReference = null, $error = null, $errorValue = null, $errorLength = null)
+	private function field_reference_configuration($configured, $fieldReference = null, $error = null, $errorValue = null, $errorLength = null, $diagnostics = array())
 	{
 		return array(
 			'configured' => (bool) $configured,
 			'field_reference' => $fieldReference,
 			'field_reference_error' => $error,
 			'field_reference_error_value' => $errorValue,
-			'field_reference_error_length' => $errorLength
+			'field_reference_error_length' => $errorLength,
+			'field_reference_diagnostics' => $diagnostics
 		);
 	}
 
 	/**
-	 * @return array<int, array{field:string,instrument:string,code:string,reference_value:?string,reference_length:?int,maximum_length:?int}>
+	 * @param string|null $instrument Restrict the audit to one Online Designer instrument when provided.
+	 * @return array<int, array{field:string,instrument:string,code:string,reference_value:?string,reference_length:?int,maximum_length:?int,diagnostics:array<int,array{code:string,positions:array<int,int>,maximum_length:?int}>}>
 	 */
-	private function project_action_tag_audit()
+	private function project_action_tag_audit($instrument = null)
 	{
 		$issues = array();
 		$projectReference = $this->public_project_reference();
 		foreach ($this->get_project_metadata() as $field => $metadata) {
+			if ($instrument !== null && ($metadata['form_name'] ?? null) !== $instrument) {
+				continue;
+			}
 			$fieldConfiguration = $this->signature_field_configuration($metadata);
 			if (!$fieldConfiguration['configured']) {
 				continue;
@@ -1601,7 +1660,8 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				'code' => '',
 				'reference_value' => null,
 				'reference_length' => null,
-				'maximum_length' => null
+				'maximum_length' => null,
+				'diagnostics' => array()
 			);
 			if (!$this->is_signature_field_metadata($metadata)) {
 				$issue['code'] = 'action_tag_unsupported_field';
@@ -1613,6 +1673,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				$issue['reference_value'] = $fieldConfiguration['field_reference_error_value'];
 				$issue['reference_length'] = $fieldConfiguration['field_reference_error_length'];
 				$issue['maximum_length'] = $this->field_reference_error_maximum_length($issue['code']);
+				$issue['diagnostics'] = $fieldConfiguration['field_reference_diagnostics'];
 				$issues[] = $issue;
 				continue;
 			}
@@ -1622,9 +1683,13 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				&& strlen($projectReference) > Renderer::MAX_PROJECT_REFERENCE_LENGTH
 			) {
 				$issue['code'] = 'project_reference_too_long';
-				$issue['reference_value'] = $this->field_reference_diagnostic_excerpt($projectReference);
-				$issue['reference_length'] = strlen($projectReference);
+				$issue['reference_value'] = $projectReference;
+				$issue['reference_length'] = $this->reference_character_length($projectReference);
 				$issue['maximum_length'] = Renderer::MAX_PROJECT_REFERENCE_LENGTH;
+				$issue['diagnostics'] = $this->reference_length_diagnostics(
+					$projectReference,
+					Renderer::MAX_PROJECT_REFERENCE_LENGTH
+				);
 				$issues[] = $issue;
 			}
 		}
@@ -1743,6 +1808,11 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			'project_reference_too_long' => 'The public project reference exceeds the 20-character limit for a combined REF value; the field reference was omitted from REF.'
 		);
 		$maximumLength = $this->field_reference_error_maximum_length($error);
+		$diagnostics = $payload['field_reference_diagnostics'] ?? array();
+		if (empty($diagnostics)) {
+			$diagnostics = array($this->field_reference_diagnostic($error, array(), $maximumLength));
+		}
+		$diagnosticsJson = json_encode($diagnostics, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 		$this->safe_log_event('sigwm_error_field_reference', array(
 			'event_id' => $payload['event_id'] ?? '',
 			'instrument' => $payload['instrument'] ?? '',
@@ -1751,6 +1821,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			'field_reference_value' => $payload['field_reference_error_value'] ?? null,
 			'field_reference_length' => $payload['field_reference_error_length'] ?? null,
 			'field_reference_maximum_length' => $maximumLength,
+			'field_reference_diagnostics' => $diagnosticsJson === false ? '[]' : $diagnosticsJson,
 			'technical_message' => $messages[$error] ?? 'The field reference was omitted from REF.'
 		));
 	}
@@ -2177,40 +2248,157 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	}
 
 	/**
-	 * @param string $reference
-	 * @return string|null
+	 * Analyse a quoted action-tag parameter without modifying the value shown
+	 * to project designers.  The usable reference is still trimmed, but every
+	 * diagnostic position refers to the original quoted parameter.
+	 *
+	 * @param string $rawReference
+	 * @return array{raw_value:string,reference_value:string,reference_length:int,diagnostics:array<int,array{code:string,positions:array<int,int>,maximum_length:?int}>}
 	 */
-	private function field_reference_value_error($reference)
+	private function field_reference_value_analysis($rawReference)
 	{
-		if ($reference === '') {
-			return 'field_reference_empty';
+		$rawReference = (string) $rawReference;
+		$rawCharacters = $this->reference_characters($rawReference);
+		$start = 0;
+		$end = count($rawCharacters);
+		while ($start < $end && $this->is_trimmed_reference_whitespace($rawCharacters[$start])) {
+			$start++;
 		}
-		if (strlen($reference) > Renderer::MAX_FIELD_REFERENCE_LENGTH) {
-			return 'field_reference_too_long';
+		while ($end > $start && $this->is_trimmed_reference_whitespace($rawCharacters[$end - 1])) {
+			$end--;
 		}
-		if (!preg_match('/^[A-Za-z0-9]/D', $reference)) {
-			return 'field_reference_invalid_start';
+
+		$referenceCharacters = array_slice($rawCharacters, $start, $end - $start);
+		$reference = implode('', $referenceCharacters);
+		$referenceLength = count($referenceCharacters);
+		$diagnostics = array();
+		if ($referenceLength === 0) {
+			$diagnostics[] = $this->field_reference_diagnostic('field_reference_empty');
+			return array(
+				'raw_value' => $rawReference,
+				'reference_value' => $reference,
+				'reference_length' => 0,
+				'diagnostics' => $diagnostics
+			);
 		}
-		if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9 ._\/-]*$/D', $reference)) {
-			return 'field_reference_invalid_characters';
+
+		if ($referenceLength > Renderer::MAX_FIELD_REFERENCE_LENGTH) {
+			$positions = array();
+			for ($index = Renderer::MAX_FIELD_REFERENCE_LENGTH; $index < $referenceLength; $index++) {
+				$positions[] = $start + $index + 1;
+			}
+			$diagnostics[] = $this->field_reference_diagnostic(
+				'field_reference_too_long',
+				$positions,
+				Renderer::MAX_FIELD_REFERENCE_LENGTH
+			);
 		}
-		return null;
+
+		if (!$this->is_valid_reference_start_character($referenceCharacters[0])) {
+			$diagnostics[] = $this->field_reference_diagnostic(
+				'field_reference_invalid_start',
+				array($start + 1)
+			);
+		}
+
+		$invalidCharacterPositions = array();
+		foreach ($referenceCharacters as $index => $character) {
+			if (!$this->is_valid_reference_character($character)) {
+				$invalidCharacterPositions[] = $start + $index + 1;
+			}
+		}
+		if (!empty($invalidCharacterPositions)) {
+			$diagnostics[] = $this->field_reference_diagnostic(
+				'field_reference_invalid_characters',
+				$invalidCharacterPositions
+			);
+		}
+
+		return array(
+			'raw_value' => $rawReference,
+			'reference_value' => $reference,
+			'reference_length' => $referenceLength,
+			'diagnostics' => $diagnostics
+		);
 	}
 
 	/**
-	 * Keep raw annotation values out of signed envelopes and log payloads. The
-	 * excerpt remains ASCII-safe for JSON and is accompanied by the true byte
-	 * length, which makes oversized values actionable without adding a large
-	 * client-side payload.
-	 *
 	 * @param string $reference
-	 * @return string
+	 * @param int $maximumLength
+	 * @return array<int,array{code:string,positions:array<int,int>,maximum_length:?int}>
 	 */
-	private function field_reference_diagnostic_excerpt($reference)
+	private function reference_length_diagnostics($reference, $maximumLength)
 	{
-		$excerpt = substr((string) $reference, 0, 160);
-		$excerpt = (string) preg_replace('/[^\x20-\x7E]/', '?', $excerpt);
-		return strlen($reference) > 160 ? $excerpt . '...' : $excerpt;
+		$positions = array();
+		foreach ($this->reference_characters($reference) as $index => $_) {
+			if ($index >= $maximumLength) {
+				$positions[] = $index + 1;
+			}
+		}
+		return empty($positions)
+			? array()
+			: array($this->field_reference_diagnostic('field_reference_too_long', $positions, $maximumLength));
+	}
+
+	/**
+	 * @param string $code
+	 * @param array<int,int> $positions
+	 * @param int|null $maximumLength
+	 * @return array{code:string,positions:array<int,int>,maximum_length:?int}
+	 */
+	private function field_reference_diagnostic($code, $positions = array(), $maximumLength = null)
+	{
+		return array(
+			'code' => (string) $code,
+			'positions' => array_values($positions),
+			'maximum_length' => $maximumLength
+		);
+	}
+
+	/**
+	 * @param string $reference
+	 * @return array<int,string>
+	 */
+	private function reference_characters($reference)
+	{
+		$characters = preg_split('//u', (string) $reference, -1, PREG_SPLIT_NO_EMPTY);
+		return is_array($characters) ? $characters : str_split((string) $reference);
+	}
+
+	/**
+	 * @param string $reference
+	 * @return int
+	 */
+	private function reference_character_length($reference)
+	{
+		return count($this->reference_characters($reference));
+	}
+
+	/**
+	 * @param string $character
+	 * @return bool
+	 */
+	private function is_trimmed_reference_whitespace($character)
+	{
+		return in_array($character, array(" ", "\t", "\n", "\r", "\0", "\x0B"), true);
+	}
+
+	/**
+	 * @param string $character
+	 * @return bool
+	 */
+	private function is_valid_reference_start_character($character)
+	{
+		return preg_match('/^[A-Za-z0-9]$/D', $character) === 1;
+	}
+
+	/**
+	 * @param string $character
+	 * @return bool
+	 */
+	private function is_valid_reference_character($character)
+	{
+		return preg_match('/^[A-Za-z0-9 ._\/-]$/D', $character) === 1;
 	}
 
 	/**
@@ -2252,7 +2440,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	 */
 	private function is_valid_field_reference_error_value($value)
 	{
-		return $value === null || (is_string($value) && preg_match('/^[\x20-\x7E]{0,163}$/D', $value));
+		// This is the literal quoted action-tag parameter.  It is signed before
+		// returning to the browser and escaped again before any HTML output.
+		return $value === null || (is_string($value) && strlen($value) <= 65535);
 	}
 
 	/**
@@ -2262,6 +2452,38 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	private function is_valid_field_reference_error_length($length)
 	{
 		return $length === null || (is_int($length) && $length >= 0 && $length <= 65535);
+	}
+
+	/**
+	 * @param mixed $diagnostics
+	 * @return bool
+	 */
+	private function is_valid_field_reference_diagnostics($diagnostics)
+	{
+		if (!is_array($diagnostics) || count($diagnostics) > 3) {
+			return false;
+		}
+		foreach ($diagnostics as $diagnostic) {
+			if (!is_array($diagnostic) || !$this->is_valid_field_reference_error($diagnostic['code'] ?? null)) {
+				return false;
+			}
+			if (!isset($diagnostic['positions']) || !is_array($diagnostic['positions']) || count($diagnostic['positions']) > 65535) {
+				return false;
+			}
+			foreach ($diagnostic['positions'] as $position) {
+				if (!is_int($position) || $position < 1 || $position > 65535) {
+					return false;
+				}
+			}
+			if (
+				array_key_exists('maximum_length', $diagnostic)
+				&& $diagnostic['maximum_length'] !== null
+				&& (!is_int($diagnostic['maximum_length']) || $diagnostic['maximum_length'] < 1 || $diagnostic['maximum_length'] > 65535)
+			) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**

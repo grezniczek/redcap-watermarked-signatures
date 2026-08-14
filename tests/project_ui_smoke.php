@@ -364,6 +364,8 @@ foreach ($localizationSources as $sourcePath) {
 $entrySource = file_get_contents(__DIR__ . '/../pages/verify-signature.php');
 $settingsPageSource = file_get_contents(__DIR__ . '/../pages/project-settings.php');
 $actionTagAuditSource = file_get_contents(__DIR__ . '/../pages/partials/action-tag-audit.php');
+$moduleSource = file_get_contents(__DIR__ . '/../WatermarkedSignaturesExternalModule.php');
+$onlineDesignerAuditScriptSource = file_get_contents(__DIR__ . '/../js/online-designer-action-tag-audit.js');
 $settingsScriptSource = file_get_contents(__DIR__ . '/../js/project-settings.js');
 $pageSource = file_get_contents(__DIR__ . '/../pages/partials/verification-page.php');
 projectUiAssert(strpos($entrySource, "'is_administrator' => false") !== false, 'Project verification entry point does not declare project scope.');
@@ -388,7 +390,11 @@ projectUiAssert(strpos($pageSource, 'Go to field') !== false, 'Verification deta
 projectUiAssert(strpos($settingsPageSource, 'get_project_settings_state') !== false, 'Project settings page does not retrieve the saved settings.');
 projectUiAssert(strpos($settingsPageSource, 'maxlength="20"') !== false, 'Project settings page does not limit the public project reference to 20 characters.');
 projectUiAssert(strpos($settingsPageSource, "require __DIR__ . '/partials/action-tag-audit.php'") !== false, 'Project settings page does not render the action-tag audit.');
-projectUiAssert(strpos($actionTagAuditSource, 'field_reference_too_long') !== false && strpos($actionTagAuditSource, 'action_tag_unsupported_field') !== false, 'Action-tag audit does not present detailed configuration findings.');
+projectUiAssert(strpos($actionTagAuditSource, 'field_reference_too_long') !== false && strpos($actionTagAuditSource, 'field_reference_invalid_characters') !== false && strpos($actionTagAuditSource, 'text-danger fw-bold') !== false, 'Action-tag audit does not present and emphasize detailed character-level findings.');
+projectUiAssert(strpos($actionTagAuditSource, 'sigwm-action-tag-audit-reference') !== false && strpos($actionTagAuditSource, 'reference_value') !== false, 'Action-tag audit does not render the original parameter value.');
+projectUiAssert(strpos($moduleSource, "PAGE !== 'Design/online_designer.php'") !== false && strpos($moduleSource, 'project_action_tag_audit($instrument)') !== false, 'Online Designer does not scope the action-tag audit to its active instrument.');
+projectUiAssert(strpos($moduleSource, "js/online-designer-action-tag-audit.js") !== false && strpos($onlineDesignerAuditScriptSource, "audit.style.maxWidth = '800px'") !== false && strpos($onlineDesignerAuditScriptSource, "audit.style.maxWidth = '1040px'") !== false, 'Online Designer action-tag audit does not use the intended widths for field and overview views.');
+projectUiAssert(strpos($onlineDesignerAuditScriptSource, 'draggablecontainer_parent') !== false && strpos($onlineDesignerAuditScriptSource, 'forms_surveys') !== false, 'Online Designer action-tag audit is not injected at the correct location for field and overview views.');
 projectUiAssert(strpos($settingsPageSource, 'save_project_settings') !== false, 'Project settings page does not save through the module API.');
 projectUiAssert(strpos($settingsPageSource, "header('Location: '") !== false && strpos($settingsPageSource, 'true, 303') !== false, 'Project settings page does not redirect after a successful save.');
 projectUiAssert(strpos($settingsPageSource, 'sigwm_settings_saved') !== false, 'Project settings page does not preserve its success message after redirecting.');

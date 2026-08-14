@@ -762,6 +762,14 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         }
         moduleAssert($log[1]['field_reference_error'] === 'field_reference_too_long', 'The field-reference diagnostic did not record the precise error code.');
         moduleAssert($log[1]['field_reference_value'] === 'ENHANCED-MIGHTILY' && $log[1]['field_reference_length'] === 17 && $log[1]['field_reference_maximum_length'] === 16, 'The field-reference diagnostic did not record the configured value, length, and limit.');
+        moduleAssert(
+            json_decode($log[1]['field_reference_diagnostics'], true) == array(array(
+                'code' => 'field_reference_too_long',
+                'positions' => array(17),
+                'maximum_length' => 16
+            )),
+            'The field-reference diagnostic log did not preserve the offending character position.'
+        );
         break;
     }
 
@@ -779,6 +787,25 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     )));
     moduleAssert($maximumFieldConfiguration['field_reference'] === str_repeat('F', Renderer::MAX_FIELD_REFERENCE_LENGTH), 'A 16-character field reference was rejected.');
 
+    $multiDiagnosticConfiguration = invokePrivate($invalidFieldReferenceModule, 'signature_field_configuration', array(array(
+        'element_type' => 'file',
+        'element_validation_type' => 'signature',
+        'misc' => '@WATERMARKED-SIGNATURE="!A@B#12345678901234"'
+    )));
+    moduleAssert(
+        $multiDiagnosticConfiguration['field_reference_error_value'] === '!A@B#12345678901234'
+        && $multiDiagnosticConfiguration['field_reference_error_length'] === 19,
+        'The action-tag diagnostic did not retain the original parameter value and character length.'
+    );
+    moduleAssert(
+        $multiDiagnosticConfiguration['field_reference_diagnostics'] === array(
+            array('code' => 'field_reference_too_long', 'positions' => array(17, 18, 19), 'maximum_length' => 16),
+            array('code' => 'field_reference_invalid_start', 'positions' => array(1), 'maximum_length' => null),
+            array('code' => 'field_reference_invalid_characters', 'positions' => array(1, 3, 5), 'maximum_length' => null)
+        ),
+        'The action-tag diagnostic did not report every invalid character and over-limit character position.'
+    );
+
     $invalidFieldReferenceProject->metadata['ordinary_upload'] = array(
         'form_name' => 'consent',
         'element_type' => 'file',
@@ -789,6 +816,11 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert(count($actionTagAudit) === 2, 'The project action-tag audit did not report every invalid tag.');
     moduleAssert($actionTagAudit[0]['field'] === 'participant_signature' && $actionTagAudit[0]['code'] === 'field_reference_too_long' && $actionTagAudit[0]['reference_length'] === 17 && $actionTagAudit[0]['maximum_length'] === 16, 'The action-tag audit did not report the oversized field reference precisely.');
     moduleAssert($actionTagAudit[1]['field'] === 'ordinary_upload' && $actionTagAudit[1]['code'] === 'action_tag_unsupported_field', 'The action-tag audit did not report a tag on an unsupported field.');
+    moduleAssert(
+        $actionTagAudit[0]['reference_value'] === 'ENHANCED-MIGHTILY'
+        && $actionTagAudit[0]['diagnostics'][0]['positions'] === array(17),
+        'The action-tag audit did not preserve the original value and identify the over-limit character.'
+    );
 
     $verificationLink = array('key' => 'signature-verification', 'url' => 'pages/verify-signature.php');
     $projectSettingsLink = array('key' => 'project-settings', 'url' => 'pages/project-settings.php');
