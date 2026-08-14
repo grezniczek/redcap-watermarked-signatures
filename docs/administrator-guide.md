@@ -114,6 +114,4 @@ make a result appear valid.
 - This module is an audit aid and does not independently satisfy legal,
   institutional, or electronic-consent requirements.
 
-See the [main documentation](../README.md) for the shared overview and the
-[technical design](../DEV_DOCS/verification_contract.md) for implementation
-details.
+See the [main documentation](../README.md) for the shared overview.

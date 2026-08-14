@@ -145,6 +145,7 @@ The result includes these checks when they can be performed:
 | Check | What it confirms |
 |---|---|
 | **Binding MAC** | The saved binding record has not been altered. |
+| **Binding extension MAC** | For format-v2 signatures, the optional field-specific `REF:` mark has not been altered. |
 | **Upload/binding relationship** | The binding matches the captured signature provenance. |
 | **Stable-scope anchor** | The watermark scope is consistent with the project, event, instrument, and field. |
 | **Edoc exists** | The saved REDCap file is still available. |
