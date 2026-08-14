@@ -521,7 +521,8 @@ TS:2026-07-16T14:32:05Z REF:PUBLIC-STUDY-ACRONYM
 
 `TS:` is the server-generated UTC capture timestamp, not an assertion of the
 signer's identity or a qualified signing time. `REF:` appears on the second
-line only when the optional public project reference is configured.
+line when an optional project reference or field-specific reference is
+configured.
 
 The footer must not contain:
 
@@ -535,13 +536,15 @@ The footer must not contain:
 It may contain a configurable project or institution logo, but the identifiers must remain meaningful without the logo.
 
 An optional project-level **public project reference** may be printed as
-`REF:<reference>`. This is a short, opt-in acronym or identifier, not the
-REDCap PID or project title. It is a visual recognition aid only and does not
-replace the cryptographic anchor. The value must be capped at 30 safe ASCII
-characters and snapshotted in upload provenance because changing the setting
-must not rewrite the meaning of an existing image. Since it is visible in image
-exports and screenshots, it must be left blank when the reference would reveal
-sensitive project information.
+`REF:<project-reference>` or, with a field mark, as
+`REF:<project-reference>:<field-reference>`. This is a short, opt-in acronym or
+identifier, not the REDCap PID or project title. It is a visual recognition aid
+only and does not replace the cryptographic anchor. New project references and
+field references are each capped at 16 safe ASCII characters and snapshotted in
+upload provenance because changing configuration must not rewrite the meaning
+of an existing image. Since the values are visible in image exports and
+screenshots, they must be left blank when they would reveal sensitive project
+information.
 
 ## 9.3 Rendering order
 

@@ -364,6 +364,15 @@ class VerificationService
 				return false;
 			}
 		}
+		if (array_key_exists('field_reference', $binding) || array_key_exists('field_reference', $upload)) {
+			if (
+				!array_key_exists('field_reference', $binding)
+				|| !array_key_exists('field_reference', $upload)
+				|| $binding['field_reference'] !== $upload['field_reference']
+			) {
+				return false;
+			}
+		}
 		return true;
 	}
 

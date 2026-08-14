@@ -117,6 +117,7 @@ function projectUiResult($captureReference)
             'edoc_id' => 98137,
             'file_sha256' => str_repeat('a', 64),
             'project_reference' => 'SIGWM-TEST',
+            'field_reference' => 'CONSENT',
             'background_image_mode' => 'custom',
             'background_image_effective_mode' => 'custom',
             'background_image_sha256' => str_repeat('b', 64),
@@ -205,6 +206,7 @@ $presented = $controller->verify($captureReference);
 projectUiAssert($presented['status'] === 'valid_current' && $service->calls === 1, 'Authorized verification was not delegated to the service.');
 projectUiAssert($presented['details']['record_id'] === 'R-002', 'Authorized record details did not show the current record ID.');
 projectUiAssert($presented['details']['project_reference'] === 'SIGWM-TEST', 'Authorized details did not show the public project reference.');
+projectUiAssert($presented['details']['field_reference'] === 'CONSENT', 'Authorized details did not show the field reference.');
 projectUiAssert($presented['details']['background_image_mode'] === 'custom', 'Authorized details did not show the selected background image mode.');
 projectUiAssert($presented['details']['background_image_effective_mode'] === 'custom', 'Authorized details did not show the applied background image mode.');
 projectUiAssert($presented['details']['background_image_sha256'] === str_repeat('b', 64), 'Authorized details did not show the custom background image digest.');
@@ -381,6 +383,7 @@ projectUiAssert(strpos($pageSource, 'id="sigwm-verification-result"') !== false,
 projectUiAssert(strpos($pageSource, "result.remove()") !== false, 'Verification search clear handler does not clear the result.');
 projectUiAssert(strpos($pageSource, 'Go to field') !== false, 'Verification details do not include a field-navigation link.');
 projectUiAssert(strpos($settingsPageSource, 'get_project_settings_state') !== false, 'Project settings page does not retrieve the saved settings.');
+projectUiAssert(strpos($settingsPageSource, 'maxlength="16"') !== false, 'Project settings page does not limit the public project reference to 16 characters.');
 projectUiAssert(strpos($settingsPageSource, 'save_project_settings') !== false, 'Project settings page does not save through the module API.');
 projectUiAssert(strpos($settingsPageSource, "header('Location: '") !== false && strpos($settingsPageSource, 'true, 303') !== false, 'Project settings page does not redirect after a successful save.');
 projectUiAssert(strpos($settingsPageSource, 'sigwm_settings_saved') !== false, 'Project settings page does not preserve its success message after redirecting.');

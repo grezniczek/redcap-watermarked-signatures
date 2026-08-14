@@ -18,6 +18,13 @@ the file/signature dialog JavaScript. The module uses these hooks to:
 This supports multiple signature fields because the wrapper selects the
 envelope by the `fieldName` argument supplied by REDCap.
 
+`@WATERMARKED-SIGNATURE` may carry one simple quoted field-reference parameter,
+for example `@WATERMARKED-SIGNATURE="CONSENT"`. The module accepts a trimmed
+1–16 character ASCII component using the same safe alphabet as project
+references. It signs the resolved component into the envelope. A malformed,
+duplicate, or invalid parameter leaves the field watermarked but omits that
+component from `REF:` and creates a capture-time diagnostic.
+
 ## Upload interception
 
 `DataEntry/file_upload.php` includes `Config/init_project.php` before it decodes
@@ -78,6 +85,10 @@ values:
 The renderer accepts only the WM1 Base32 identifier shapes and an ISO 8601 UTC
 timestamp ending in `Z`. The SHA-256 digest is computed over the final encoded
 PNG and stored in both upload provenance and the later MAC-protected binding.
+The optional visible reference is a 16-character project component, a
+16-character field component, or both separated by `:`; its maximum rendered
+length is therefore 33 characters. This extends WM1 without changing its
+footer structure or identifier semantics.
 
 ## Failure behavior
 
@@ -159,6 +170,12 @@ field-specific `context_ref`. This reference connects upload provenance to the
 later save without placing a tentative record identifier in the signed envelope
 or immutable image. Stable record pseudonyms are deferred beyond the first
 milestone, as permitted by the implementation plan.
+
+`field_reference` is optional for compatibility with envelopes and provenance
+created before field marks were introduced. New envelopes include it (or an
+internal configuration-error code when it was deliberately omitted). New
+bindings authenticate the property when present; legacy bindings without it
+continue to verify under the original MAC payload.
 
 After REDCap creates the record, its post-save path invokes
 `redcap_save_record` with the authoritative record ID. The module reads the edoc

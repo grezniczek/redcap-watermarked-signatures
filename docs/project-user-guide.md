@@ -24,7 +24,9 @@ TS:2026-08-09T12:34:56.789Z
 ```
 
 Depending on the project configuration, the signature may also have a faint
-repeated background image. It does not change the identifier overlay or footer.
+repeated background image and a visible `REF:` value. A project can add a
+field-specific mark to `REF:`, such as `REF:STUDY:CONSENT` or `REF:CONSENT`.
+These do not change the identifier overlay or the capture-reference lookup.
 
 The value after `S:` is the **capture reference**. Keep the complete value when
 you need someone to verify an exported image. `TS:` is a server-generated UTC
@@ -75,8 +77,8 @@ to work around the message by uploading the image to an ordinary file field.
 ## Privacy reminders
 
 The watermark remains visible in exports and screenshots. Treat the capture
-reference and any visible `REF:` project reference according to the project's
-data-handling policy. The module verifies REDCap's stored file and does not
-return signature image bytes through the verification page.
+reference and any visible `REF:` project or field reference according to the
+project's data-handling policy. The module verifies REDCap's stored file and
+does not return signature image bytes through the verification page.
 
 For the full module overview, see the [main documentation](../README.md).

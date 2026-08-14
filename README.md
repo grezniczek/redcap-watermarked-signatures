@@ -51,9 +51,14 @@ configured. It also does not backfill watermarking for existing files.
 5. Capture and save a test signature. The saved image should have a watermark
    overlay and a footer beginning with `WM1`.
 
-The action tag has no parameters. It can appear alongside other field
-annotations. It has no effect on ordinary file-upload fields or on fields that
-are not configured by REDCap as Signature or Enhanced Signature fields.
+The tag can appear alongside other field annotations. To append a field-specific
+mark to the visible reference, use a simple quoted parameter, for example
+`@WATERMARKED-SIGNATURE="CONSENT"`. The mark must contain 1–16 ASCII letters,
+digits, spaces, periods, hyphens, underscores, or slashes. A malformed,
+duplicate, or invalid parameter is omitted and logged without preventing the
+signature capture. The tag has no effect on ordinary file-upload fields or on
+fields that are not configured by REDCap as Signature or Enhanced Signature
+fields.
 
 ### Project settings
 
@@ -62,14 +67,14 @@ Project designers and REDCap superusers configure future captures through **Conf
 | Setting | Default | Guidance |
 |---|---:|---|
 | **Retain unbound signature-upload provenance for this many days** | 90 days | Controls cleanup of captures that were uploaded but never bound by a successful form save. Use `0` to retain them indefinitely. Values above 3650 are capped at 3650 days. Successful bindings, rename history, and error events are retained. |
-| **Public project reference** | Blank | An optional 1–30 character public identifier printed as `REF:` on every newly captured image. It may use ASCII letters, digits, spaces, periods, hyphens, underscores, or slashes. Do not use a project title, protocol number, or any other value that should not be visible in exports and screenshots. |
+| **Public project reference** | Blank | An optional 1–16 character public identifier printed as `REF:` on every newly captured image. It may use ASCII letters, digits, spaces, periods, hyphens, underscores, or slashes. A field mark from the action tag is appended with `:`, for example `REF:STUDY:CONSENT`; without a project reference, it appears as `REF:CONSENT`. Do not use a project title, protocol number, or any other value that should not be visible in exports and screenshots. |
 | **Signature background image** | REDCap logo | Select the faint, repeated background: the REDCap logo, a custom project image, or no background image. The identifier overlay and `WM1` footer are always added. |
 | **Custom background image** | Blank | Upload a PNG up to 6 MiB. Each side must be 16–4096 pixels and the image may contain at most 12 million pixels. It is normalized before storage to at most 512 pixels per side and 1 MiB. The aspect ratio must leave at least 16 pixels per side after normalization. Custom-image mode is unavailable until an image is stored or selected for upload. Use **Add image** when no image is stored, or **Replace image** to choose a new one. The page shows its thumbnail, filename, and dimensions. Select **Remove the current stored image** to mark the thumbnail for removal when saved; removal takes precedence over a pending replacement. It only removes the image from the module and does not change existing signature images. The stored image is otherwise retained even when another background mode is selected. |
 | **Custom image rotation** | 20° | Applies only to the custom image. Select a whole-number rotation from -180° through 180°; positive values rotate counterclockwise. The page previews the selected image and rotation before it is saved. |
 
 **Output debug information to the browser console** remains in REDCap's standard External Module settings dialog. Enable it only while troubleshooting client-side behavior, then turn it off.
 
-Changing the public project reference or background-image settings affects only future captures. It does not modify existing images or their recorded provenance. Each capture records the requested and applied image modes, the applied rotation, and—when a custom image was used—its SHA-256. If the custom image is unavailable or invalid when a signature is captured, the module logs the issue and uses the REDCap logo for that capture.
+Changing the public project reference, field annotation, or background-image settings affects only future captures. It does not modify existing images or their recorded provenance. Each capture records the project and field references, requested and applied image modes, the applied rotation, and—when a custom image was used—its SHA-256. If the custom image is unavailable or invalid when a signature is captured, the module logs the issue and uses the REDCap logo for that capture.
 
 ## Capture a signature
 
@@ -94,7 +99,8 @@ TS:2026-08-09T12:34:56.789Z REF:STUDY-42
 - `C:` is a field-specific context reference.
 - `TS:` is the server-generated UTC capture timestamp. It is not a statement
   of signer identity or a qualified signing time.
-- `REF:` appears only if the optional public project reference is configured.
+- `REF:` appears if a public project reference or field mark is configured. The
+  field mark is appended with `:` when both are present.
 
 Keep the complete `S:` value with any exported image or verification request.
 The project verification page asks for the part after `S:` because the prefix
@@ -211,7 +217,8 @@ field clear; a failed result should be treated as an integrity issue.
 ## Privacy and operational notes
 
 - Watermarks are visible on the stored image and on any exported or screenshot
-  copy. Treat the optional `REF:` value and the capture reference accordingly.
+  copy. Treat the optional `REF:` value, including any field mark, and the
+  capture reference accordingly.
 - The module does not write separate image copies. REDCap stores the final,
   watermarked edoc through its normal file workflow.
 - The verification pages do not return file bytes. They verify the stored file

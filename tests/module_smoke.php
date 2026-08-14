@@ -408,11 +408,22 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     {
         $payloads = array();
         foreach ($module->logs as $log) {
-            if ($log[0] === $message) {
+            if ($log[0] === $message && isset($log[1]['payload_json'])) {
                 $payloads[] = json_decode($log[1]['payload_json'], true);
             }
         }
         return $payloads;
+    }
+
+    function countLogsForMessage($module, $message)
+    {
+        $count = 0;
+        foreach ($module->logs as $log) {
+            if ($log[0] === $message) {
+                $count++;
+            }
+        }
+        return $count;
     }
 
     function injectedConfig($html)
@@ -601,6 +612,20 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert(!$ajaxSettingsValidation['ok'], 'Project settings AJAX validation accepted invalid values.');
     moduleAssert($ajaxSettingsValidation['errors']['public_project_reference'] === 'settings_error_public_project_reference', 'Project settings AJAX validation did not identify an invalid public reference.');
     moduleAssert($ajaxSettingsValidation['errors']['background_image_rotation'] === 'settings_error_background_rotation', 'Project settings AJAX validation did not identify an invalid rotation.');
+    $maximumProjectReferenceValidation = $projectSettingsModule->validate_project_settings_input(123, array(
+        'retention_days' => '17',
+        'public_project_reference' => str_repeat('P', Renderer::MAX_PROJECT_REFERENCE_LENGTH),
+        'background_image_mode' => 'redcap',
+        'background_image_rotation' => '-30'
+    ));
+    moduleAssert($maximumProjectReferenceValidation['ok'], 'Project settings rejected a 16-character public project reference.');
+    $oversizedProjectReferenceValidation = $projectSettingsModule->validate_project_settings_input(123, array(
+        'retention_days' => '17',
+        'public_project_reference' => str_repeat('P', Renderer::MAX_PROJECT_REFERENCE_LENGTH + 1),
+        'background_image_mode' => 'redcap',
+        'background_image_rotation' => '-30'
+    ));
+    moduleAssert($oversizedProjectReferenceValidation['errors']['public_project_reference'] === 'settings_error_public_project_reference', 'Project settings accepted a public project reference longer than 16 characters.');
     $retainedImageEdocId = $projectSettingsModule->projectSettings['custom-background-image'];
     $redcapSettings = $projectSettingsModule->save_project_settings(123, array(
         'retention_days' => '17',
@@ -674,7 +699,10 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     $multiEnvelopeModule = new WatermarkedSignaturesExternalModule();
     $multiEnvelopeModule->framework = new FakeFramework();
     $multiEnvelopeModule->projectSettings['public-project-reference'] = 'SIGWM-TEST';
-    setPrivateProperty($multiEnvelopeModule, 'proj', new FakeProject(null, true));
+    $multiEnvelopeProject = new FakeProject(null, true);
+    $multiEnvelopeProject->metadata['participant_signature']['misc'] = '@WATERMARKED-SIGNATURE="CONSENT"';
+    $multiEnvelopeProject->metadata['witness_signature']['misc'] = '@WATERMARKED-SIGNATURE="WITNESS"';
+    setPrivateProperty($multiEnvelopeModule, 'proj', $multiEnvelopeProject);
     setPrivateProperty($multiEnvelopeModule, 'project_id', 123);
     ob_start();
     invokePrivate($multiEnvelopeModule, 'inject_capture_envelopes', array('consent', 417, 'data_entry'));
@@ -691,6 +719,49 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($witnessEnvelope['field'] === 'witness_signature', 'Witness envelope was scoped to the wrong field.');
     moduleAssert($participantEnvelope['context_ref'] !== $witnessEnvelope['context_ref'], 'Signature fields shared a context reference.');
     moduleAssert($participantEnvelope['project_reference'] === 'SIGWM-TEST' && $witnessEnvelope['project_reference'] === 'SIGWM-TEST', 'Configured public project reference was not signed into every field envelope.');
+    moduleAssert($participantEnvelope['field_reference'] === 'CONSENT' && $witnessEnvelope['field_reference'] === 'WITNESS', 'Field references were not signed into their respective envelopes.');
+
+    $fieldReferenceUpload = captureSignatureUpload(
+        $multiEnvelopeModule,
+        $multiEnvelopeConfig['envelopes']['participant_signature'],
+        $originalPng,
+        99507
+    );
+    moduleAssert($fieldReferenceUpload['field_reference'] === 'CONSENT', 'Upload provenance did not retain the signed field reference.');
+    REDCap::$data = array(
+        'FIELD-REFERENCE' => array(417 => array('participant_signature' => '99507'))
+    );
+    $multiEnvelopeModule->redcap_save_record(123, 'FIELD-REFERENCE', 'consent', 417, null, null, null, 1);
+    $fieldReferenceBinding = payloadsForMessage($multiEnvelopeModule, 'sigwm_bind')[0];
+    moduleAssert($fieldReferenceBinding['field_reference'] === 'CONSENT', 'Binding did not retain the authenticated field reference.');
+
+    $invalidFieldReferenceProject = new FakeProject();
+    $invalidFieldReferenceProject->metadata['participant_signature']['misc'] = '@WATERMARKED-SIGNATURE=CONSENT';
+    $invalidFieldReferenceModule = new WatermarkedSignaturesExternalModule();
+    $invalidFieldReferenceModule->framework = new FakeFramework();
+    setPrivateProperty($invalidFieldReferenceModule, 'proj', $invalidFieldReferenceProject);
+    setPrivateProperty($invalidFieldReferenceModule, 'project_id', 123);
+    ob_start();
+    invokePrivate($invalidFieldReferenceModule, 'inject_capture_envelopes', array('consent', 417, 'data_entry'));
+    $invalidFieldReferenceConfig = injectedConfig(ob_get_clean());
+    $invalidFieldReferenceEnvelope = $signer->verify($invalidFieldReferenceConfig['envelopes']['participant_signature']);
+    moduleAssert($invalidFieldReferenceEnvelope['field_reference'] === null, 'An invalid field-reference action-tag parameter was not omitted.');
+    moduleAssert($invalidFieldReferenceEnvelope['field_reference_error'] === 'invalid_action_tag_parameter', 'An invalid field-reference action-tag parameter was not identified.');
+    $invalidFieldReferenceUpload = captureSignatureUpload(
+        $invalidFieldReferenceModule,
+        $invalidFieldReferenceConfig['envelopes']['participant_signature'],
+        $originalPng,
+        99508
+    );
+    moduleAssert($invalidFieldReferenceUpload['field_reference'] === null, 'An invalid field-reference action-tag parameter reached upload provenance.');
+    moduleAssert(countLogsForMessage($invalidFieldReferenceModule, 'sigwm_error_field_reference') === 1, 'An invalid field-reference action-tag parameter was not logged during capture.');
+
+    $duplicateConfiguration = invokePrivate($invalidFieldReferenceModule, 'signature_field_configuration', array(array(
+        'element_type' => 'file',
+        'element_validation_type' => 'signature',
+        'misc' => '@WATERMARKED-SIGNATURE @WATERMARKED-SIGNATURE="CONSENT"'
+    )));
+    moduleAssert($duplicateConfiguration['configured'] && $duplicateConfiguration['field_reference'] === null && $duplicateConfiguration['field_reference_error'] === 'multiple_action_tags', 'Duplicate watermark action tags were not rejected as a field-reference configuration error.');
 
     $verificationLink = array('key' => 'signature-verification', 'url' => 'pages/verify-signature.php');
     $projectSettingsLink = array('key' => 'project-settings', 'url' => 'pages/project-settings.php');
@@ -906,6 +977,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($uploadProvenance['capture_origin'] === 'data_entry', 'Upload provenance did not retain the data-entry origin.');
     moduleAssert($uploadProvenance['capture_username'] === 'data-entry-user', 'Upload provenance did not retain the current username.');
     moduleAssert($uploadProvenance['project_reference'] === 'SIGWM-TEST', 'Upload provenance did not retain the public project reference snapshot.');
+    moduleAssert($uploadProvenance['field_reference'] === null, 'A legacy envelope without a field reference did not remain valid.');
 
     $responseFailureModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($responseFailureModule, 'proj', new FakeProject());

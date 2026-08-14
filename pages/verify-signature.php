@@ -35,6 +35,7 @@ $verificationPage = array(
         'capture_ref' => $module->framework->tt('ui_label_capture_reference'), // Capture reference
         'context_ref' => $module->framework->tt('ui_label_context_reference'), // Context reference
         'project_reference' => $module->framework->tt('ui_label_public_project_reference'), // Public project reference
+        'field_reference' => $module->framework->tt('ui_label_field_reference'), // Field reference
         'anchor' => $module->framework->tt('ui_label_visible_anchor'), // Visible anchor
         'record_id' => $module->framework->tt('ui_label_record_id'), // Record ID
         'event_id' => $module->framework->tt('ui_label_event_id'), // Event ID
