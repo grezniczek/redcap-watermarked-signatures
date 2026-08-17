@@ -43,7 +43,11 @@ class AdministratorVerificationController
 		$this->repository = $repository;
 		$this->service = $service;
 		$this->econsentIpService = $econsentIpService;
-		$this->canRevealEconsentIps = $canRevealEconsentIps === true;
+		// The constructor's boolean is a capability granted by the module
+		// factory. Enforce the Database Query Tool's own Control Center
+		// conditions here as defense in depth before plaintext can be returned.
+		$this->canRevealEconsentIps = $canRevealEconsentIps === true
+			&& DatabaseQueryToolAccess::canAccessDatabaseQueryTool();
 	}
 
 	/**

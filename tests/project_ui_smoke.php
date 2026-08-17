@@ -239,6 +239,7 @@ $service->result['checks']['binding_econsent_ip_mac'] = true;
 $service->result['binding']['v'] = 3;
 $service->result['binding']['econsent_survey_id'] = 715;
 $service->result['binding']['econsent_ip_system_setting_enabled'] = true;
+$service->result['binding']['econsent_ip_capture_status'] = 'captured';
 $econsentIpService = new ProjectUiEconsentIpService();
 $econsentController = new ProjectVerificationController(123, $repository, $mac, $service, $allowedPolicy, $econsentIpService);
 $econsentPresented = $econsentController->verify($captureReference);
@@ -248,6 +249,7 @@ projectUiAssert(
         && !isset($econsentPresented['econsent_ip_diagnostic']['signature_upload_ip'])
         && !isset($econsentPresented['econsent_ip_diagnostic']['econsent_submission_ip'])
         && ($econsentPresented['details']['econsent_ip_system_setting_enabled'] ?? null) === true
+        && ($econsentPresented['details']['econsent_ip_capture_status'] ?? null) === 'captured'
         && $econsentPresented['can_reveal_econsent_ips'] === false,
     'Project e-Consent IP diagnostics did not keep the setting state while suppressing IP addresses.'
 );

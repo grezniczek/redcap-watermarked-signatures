@@ -6,6 +6,7 @@ require_once __DIR__ . '/../classes/Crypto/Base32.php';
 require_once __DIR__ . '/../classes/Crypto/Base64Url.php';
 require_once __DIR__ . '/../classes/Crypto/ReferenceGenerator.php';
 require_once __DIR__ . '/../classes/Verification/RedcapFieldLink.php';
+require_once __DIR__ . '/../classes/Verification/DatabaseQueryToolAccess.php';
 require_once __DIR__ . '/../classes/Verification/AdministratorVerificationController.php';
 
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
@@ -15,6 +16,10 @@ use RuntimeException;
 if (!defined('APP_PATH_WEBROOT')) {
     define('APP_PATH_WEBROOT', '/redcap/');
 }
+if (!defined('SUPER_USER')) {
+    define('SUPER_USER', true);
+}
+$GLOBALS['database_query_tool_enabled'] = '1';
 
 function adminUiAssert($condition, $message)
 {
@@ -204,6 +209,18 @@ adminUiAssert(
         && $noReveal['can_reveal_econsent_ips'] === false,
     'Administrator diagnostics exposed IP addresses without Database Query Tool access.'
 );
+$GLOBALS['database_query_tool_enabled'] = '0';
+$disabledDqtIpService = new AdministratorUiEconsentIpService();
+$disabledDqtController = new AdministratorVerificationController($repository, $service, $disabledDqtIpService, true);
+$disabledDqt = $disabledDqtController->verify(substr($captureReference, 2));
+adminUiAssert(
+    $disabledDqtIpService->revealArguments === array(false)
+        && !isset($disabledDqt['details']['signature_upload_ip'])
+        && !isset($disabledDqt['details']['econsent_submission_ip'])
+        && $disabledDqt['can_reveal_econsent_ips'] === false,
+    'Administrator diagnostics exposed IP addresses while the Database Query Tool was disabled.'
+);
+$GLOBALS['database_query_tool_enabled'] = '1';
 $revealIpService = new AdministratorUiEconsentIpService();
 $revealController = new AdministratorVerificationController($repository, $service, $revealIpService, true);
 $revealed = $revealController->verify(substr($captureReference, 2));

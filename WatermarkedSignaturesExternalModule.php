@@ -18,6 +18,7 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Econsent\IpService;
 use DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository;
 use DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController;
+use DE\RUB\WatermarkedSignaturesExternalModule\Verification\DatabaseQueryToolAccess;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectAccessPolicy;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\ProjectVerificationController;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\RedcapCurrentValueReader;
@@ -40,6 +41,7 @@ require_once "classes/Econsent/IpService.php";
 require_once "classes/Storage/LogRepository.php";
 require_once "classes/Watermark/Renderer.php";
 require_once "classes/Verification/AdministratorVerificationController.php";
+require_once "classes/Verification/DatabaseQueryToolAccess.php";
 require_once "classes/Verification/RedcapEdocReader.php";
 require_once "classes/Verification/RedcapCurrentValueReader.php";
 require_once "classes/Verification/RedcapFieldLink.php";
@@ -579,7 +581,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			$repository,
 			$service,
 			$this->econsent_ip_service(),
-			$this->can_reveal_econsent_ips_in_administrator_diagnostics()
+			DatabaseQueryToolAccess::canAccessDatabaseQueryTool()
 		);
 	}
 
@@ -610,25 +612,6 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		return new IpService(new IpCipher(
 			KeyDerivation::derive(KeyDerivation::ECONSENT_IP_ENCRYPTION_INFO)
 		));
-	}
-
-	/**
-	 * IP addresses are sensitive data. The Control Center Database Query Tool
-	 * uses these same two conditions for access, so only an administrator who
-	 * can use it may have plaintext values shown in this diagnostic UI.
-	 *
-	 * @return bool
-	 */
-	private function can_reveal_econsent_ips_in_administrator_diagnostics()
-	{
-		// The Database Query Tool itself checks SUPER_USER. Prefer that
-		// request-context authority when REDCap defined it, while retaining a
-		// framework-user fallback for non-page contexts and tests.
-		$isSuperUser = defined('SUPER_USER')
-			? (bool) SUPER_USER
-			: $this->getUser()->isSuperUser();
-		return $isSuperUser
-			&& (string) ($GLOBALS['database_query_tool_enabled'] ?? '') === '1';
 	}
 
 	/**

@@ -41,6 +41,12 @@ $econsentIpSystemSettingLabels = array(
 	true => $module->framework->tt('ui_econsent_ip_system_enabled'), // Enabled
 	false => $module->framework->tt('ui_econsent_ip_system_disabled') // Disabled
 );
+$econsentIpCaptureStatusLabels = array(
+	'not_applicable' => $module->framework->tt('ui_econsent_ip_capture_not_applicable'), // Not applicable
+	'captured' => $module->framework->tt('ui_econsent_ip_capture_captured'), // Captured (encrypted)
+	'not_captured_system_disabled' => $module->framework->tt('ui_econsent_ip_capture_system_disabled'), // Not captured: system setting disabled
+	'not_captured_client_ip_unavailable' => $module->framework->tt('ui_econsent_ip_capture_client_unavailable') // Not captured: client IP unavailable
+);
 
 $statusPresentation = array(
     'valid_current' => array(
@@ -294,7 +300,13 @@ $diagnosticSummaryLabels = array(
                                     $key === 'econsent_ip_system_setting_enabled'
                                     && is_bool($value)
                                     ? $econsentIpSystemSettingLabels[$value]
-                                    : $value
+                                    : (
+                                        $key === 'econsent_ip_capture_status'
+                                        && is_string($value)
+                                        && array_key_exists($value, $econsentIpCaptureStatusLabels)
+                                        ? $econsentIpCaptureStatusLabels[$value]
+                                        : $value
+                                    )
                                 );
                             ?>
                             <tr>

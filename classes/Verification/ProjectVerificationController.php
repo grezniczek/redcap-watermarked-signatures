@@ -136,6 +136,7 @@ class ProjectVerificationController
 		));
 		if ($this->hasTrustedEconsentIpContext($result, $binding)) {
 			$details['econsent_ip_system_setting_enabled'] = $binding['econsent_ip_system_setting_enabled'];
+			$details['econsent_ip_capture_status'] = $binding['econsent_ip_capture_status'];
 		}
 		$details['record_id'] = $result['current_record_id'] ?? ($binding['record_id'] ?? null);
 
