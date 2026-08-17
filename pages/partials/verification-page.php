@@ -31,9 +31,7 @@ $logEventLabel = $module->framework->tt('ui_label_log_event'); // Log event
 $unknownEventLabel = $module->framework->tt('ui_unknown_event'); // unknown event
 $detailsLabel = $module->framework->tt('ui_label_details'); // Details
 $technicalFindingsLabel = $module->framework->tt('ui_technical_findings'); // Technical findings:
-$econsentIpHeading = $module->framework->tt('ui_heading_econsent_ip_diagnostic'); // e-Consent IP diagnostic
-$econsentIpSignatureLabel = $module->framework->tt('ui_label_econsent_signature_upload_ip'); // Signature-upload IP
-$econsentIpSubmissionLabel = $module->framework->tt('ui_label_econsent_submission_ip'); // e-Consent submission IP
+$econsentIpCheckLabel = $module->framework->tt('ui_check_econsent_ip_comparison'); // e-Consent IP comparison
 $backgroundImageModeLabels = array(
     'redcap' => $module->framework->tt('ui_background_image_mode_redcap'), // REDCap logo
     'custom' => $module->framework->tt('ui_background_image_mode_custom'), // Custom image
@@ -42,12 +40,6 @@ $backgroundImageModeLabels = array(
 $econsentIpSystemSettingLabels = array(
 	true => $module->framework->tt('ui_econsent_ip_system_enabled'), // Enabled
 	false => $module->framework->tt('ui_econsent_ip_system_disabled') // Disabled
-);
-$econsentIpCaptureStatusLabels = array(
-	'not_applicable' => $module->framework->tt('ui_econsent_ip_capture_not_applicable'), // Not applicable
-	'captured' => $module->framework->tt('ui_econsent_ip_capture_captured'), // Captured (encrypted)
-	'not_captured_system_disabled' => $module->framework->tt('ui_econsent_ip_capture_system_disabled'), // Not captured: system setting disabled
-	'not_captured_client_ip_unavailable' => $module->framework->tt('ui_econsent_ip_capture_client_unavailable') // Not captured: client IP unavailable
 );
 
 $statusPresentation = array(
@@ -112,47 +104,15 @@ $checkLabels = array(
     'file_digest' => $module->framework->tt('ui_check_file_digest'), // Final edoc SHA-256
     'current_field' => $module->framework->tt('ui_check_current_field') // Field currently points to edoc
 );
-$econsentIpPresentation = array(
-	'match' => array(
-		$module->framework->tt('ui_econsent_ip_match'), // e-Consent IP addresses match
-		'success',
-		$module->framework->tt('ui_econsent_ip_match_detail') // The IP address recorded when the signature was uploaded matches REDCap's stored e-Consent submission IP.
-	),
-	'mismatch' => array(
-		$module->framework->tt('ui_econsent_ip_mismatch'), // e-Consent IP addresses do not match
-		'warning',
-		$module->framework->tt('ui_econsent_ip_mismatch_detail') // This diagnostic warning does not change signature integrity verification.
-	),
-	'not_tested_system_disabled' => array(
-		$module->framework->tt('ui_econsent_ip_not_tested'), // e-Consent IP comparison not tested
-		'secondary',
-		$module->framework->tt('ui_econsent_ip_not_tested_system_disabled') // IP capture was disabled in REDCap's e-Consent PDF setting when the signature was uploaded.
-	),
-	'not_tested_signature_ip_unavailable' => array(
-		$module->framework->tt('ui_econsent_ip_not_tested'),
-		'secondary',
-		$module->framework->tt('ui_econsent_ip_not_tested_signature_unavailable')
-	),
-	'not_tested_signature_ip_unreadable' => array(
-		$module->framework->tt('ui_econsent_ip_not_tested'),
-		'warning',
-		$module->framework->tt('ui_econsent_ip_not_tested_signature_unreadable')
-	),
-	'not_tested_econsent_context_unavailable' => array(
-		$module->framework->tt('ui_econsent_ip_not_tested'),
-		'secondary',
-		$module->framework->tt('ui_econsent_ip_not_tested_context_unavailable')
-	),
-	'not_tested_econsent_submission_missing' => array(
-		$module->framework->tt('ui_econsent_ip_not_tested'),
-		'secondary',
-		$module->framework->tt('ui_econsent_ip_not_tested_submission_missing')
-	),
-	'not_tested_econsent_ip_unavailable' => array(
-		$module->framework->tt('ui_econsent_ip_not_tested'),
-		'secondary',
-		$module->framework->tt('ui_econsent_ip_not_tested_submission_unavailable')
-	)
+$econsentIpBadgePresentation = array(
+	'match' => array('bg-success', $module->framework->tt('ui_econsent_ip_comparison_pass')), // PASS
+	'mismatch' => array('bg-warning text-dark', $module->framework->tt('ui_econsent_ip_comparison_mismatch')), // MISMATCH
+	'not_tested_system_disabled' => array('bg-secondary', $module->framework->tt('ui_econsent_ip_comparison_not_tested')), // NOT TESTED
+	'not_tested_signature_ip_unavailable' => array('bg-secondary', $module->framework->tt('ui_econsent_ip_comparison_not_tested')),
+	'not_tested_signature_ip_unreadable' => array('bg-secondary', $module->framework->tt('ui_econsent_ip_comparison_not_tested')),
+	'not_tested_econsent_context_unavailable' => array('bg-secondary', $module->framework->tt('ui_econsent_ip_comparison_not_tested')),
+	'not_tested_econsent_submission_missing' => array('bg-secondary', $module->framework->tt('ui_econsent_ip_comparison_not_tested')),
+	'not_tested_econsent_ip_unavailable' => array('bg-secondary', $module->framework->tt('ui_econsent_ip_comparison_not_tested'))
 );
 $diagnosticSummaryLabels = array(
     'log_id' => $module->framework->tt('ui_label_log_id'), // Log ID
@@ -274,25 +234,10 @@ $diagnosticSummaryLabels = array(
             ? $result['econsent_ip_diagnostic']
             : null;
         $econsentIpStatus = is_array($econsentIpDiagnostic) ? ($econsentIpDiagnostic['status'] ?? null) : null;
-        $econsentIpResult = is_string($econsentIpStatus) && isset($econsentIpPresentation[$econsentIpStatus])
-            ? $econsentIpPresentation[$econsentIpStatus]
+        $econsentIpBadge = is_string($econsentIpStatus) && isset($econsentIpBadgePresentation[$econsentIpStatus])
+            ? $econsentIpBadgePresentation[$econsentIpStatus]
             : null;
         ?>
-        <?php if ($econsentIpResult !== null): ?>
-            <div class="alert alert-<?= $escape($econsentIpResult[1]) ?>">
-                <div class="fw-bold"><?= $escape($econsentIpHeading) ?>: <?= $escape($econsentIpResult[0]) ?></div>
-                <div><?= $escape($econsentIpResult[2]) ?></div>
-                <?php if ($isAdministrator && !empty($result['can_reveal_econsent_ips'])): ?>
-                    <?php if (array_key_exists('signature_upload_ip', $econsentIpDiagnostic)): ?>
-                        <div class="mt-1"><?= $escape($econsentIpSignatureLabel) ?>: <code><?= $escape($econsentIpDiagnostic['signature_upload_ip']) ?></code></div>
-                    <?php endif; ?>
-                    <?php if (array_key_exists('econsent_submission_ip', $econsentIpDiagnostic)): ?>
-                        <div><?= $escape($econsentIpSubmissionLabel) ?>: <code><?= $econsentIpDiagnostic['econsent_submission_ip'] === null ? '&mdash;' : $escape($econsentIpDiagnostic['econsent_submission_ip']) ?></code></div>
-                    <?php endif; ?>
-                <?php endif; ?>
-            </div>
-        <?php endif; ?>
-
         <?php if (!empty($result['checks'])): ?>
             <div class="card mb-4">
                 <div class="card-header fw-bold p-3"><?= $escape($verificationChecksHeading) ?></div>
@@ -314,6 +259,12 @@ $diagnosticSummaryLabels = array(
                                 <td><?= $badge ?></td>
                             </tr>
                         <?php endforeach; ?>
+                        <?php if ($econsentIpBadge !== null): ?>
+                            <tr>
+                                <th class="ps-3"><?= $escape($econsentIpCheckLabel) ?></th>
+                                <td><span class="badge <?= $escape($econsentIpBadge[0]) ?>"><?= $escape($econsentIpBadge[1]) ?></span></td>
+                            </tr>
+                        <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
@@ -343,13 +294,7 @@ $diagnosticSummaryLabels = array(
                                     $key === 'econsent_ip_system_setting_enabled'
                                     && is_bool($value)
                                     ? $econsentIpSystemSettingLabels[$value]
-                                    : (
-                                        $key === 'econsent_ip_capture_status'
-                                        && is_string($value)
-                                        && array_key_exists($value, $econsentIpCaptureStatusLabels)
-                                        ? $econsentIpCaptureStatusLabels[$value]
-                                        : $value
-                                    )
+                                    : $value
                                 );
                             ?>
                             <tr>

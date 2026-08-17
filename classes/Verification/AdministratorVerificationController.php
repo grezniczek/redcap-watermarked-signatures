@@ -124,9 +124,17 @@ class AdministratorVerificationController
 		$this->copy($details, $binding, array(
 			'event_id', 'instrument', 'field', 'repeat_type',
 			'repeat_instrument', 'repeat_instance', 'bound_at', 'save_origin',
-			'save_username', 'econsent_survey_id',
-			'econsent_ip_system_setting_enabled', 'econsent_ip_capture_status'
+			'save_username'
 		));
+		if ($this->hasTrustedEconsentIpContext($result, $binding)) {
+			$details['econsent_ip_system_setting_enabled'] = $binding['econsent_ip_system_setting_enabled'];
+		}
+		$econsentIpDiagnostic = $result['econsent_ip_diagnostic'] ?? null;
+		if ($this->canRevealEconsentIps && is_array($econsentIpDiagnostic)) {
+			$this->copy($details, $econsentIpDiagnostic, array(
+				'signature_upload_ip', 'econsent_submission_ip'
+			));
+		}
 		$details['record_id'] = $result['current_record_id'] ?? ($binding['record_id'] ?? null);
 		$this->copyMapped($details, $upload, array(
 			'pid' => 'upload_project_id',
@@ -193,6 +201,20 @@ class AdministratorVerificationController
 			// The e-Consent comparison is not a signature-integrity check.
 		}
 		return $result;
+	}
+
+	/**
+	 * @param array<string, mixed> $result
+	 * @param array<string, mixed> $binding
+	 * @return bool
+	 */
+	private function hasTrustedEconsentIpContext($result, $binding)
+	{
+		$checks = isset($result['checks']) && is_array($result['checks']) ? $result['checks'] : array();
+		return (int) ($binding['v'] ?? 0) >= 3
+			&& ($checks['binding_econsent_ip_mac'] ?? null) === true
+			&& ($binding['econsent_survey_id'] ?? null) !== null
+			&& array_key_exists('econsent_ip_system_setting_enabled', $binding);
 	}
 
 	/**

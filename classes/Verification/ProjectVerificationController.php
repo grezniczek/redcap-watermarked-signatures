@@ -134,6 +134,9 @@ class ProjectVerificationController
 			'repeat_instrument', 'repeat_instance', 'bound_at', 'save_origin',
 			'save_username', 'watermark_version'
 		));
+		if ($this->hasTrustedEconsentIpContext($result, $binding)) {
+			$details['econsent_ip_system_setting_enabled'] = $binding['econsent_ip_system_setting_enabled'];
+		}
 		$details['record_id'] = $result['current_record_id'] ?? ($binding['record_id'] ?? null);
 
 		return array(
@@ -192,6 +195,20 @@ class ProjectVerificationController
 			// service as not-tested; diagnostics must never affect verification.
 		}
 		return $result;
+	}
+
+	/**
+	 * @param array<string, mixed> $result
+	 * @param array<string, mixed> $binding
+	 * @return bool
+	 */
+	private function hasTrustedEconsentIpContext($result, $binding)
+	{
+		$checks = isset($result['checks']) && is_array($result['checks']) ? $result['checks'] : array();
+		return (int) ($binding['v'] ?? 0) >= 3
+			&& ($checks['binding_econsent_ip_mac'] ?? null) === true
+			&& ($binding['econsent_survey_id'] ?? null) !== null
+			&& array_key_exists('econsent_ip_system_setting_enabled', $binding);
 	}
 
 	/**

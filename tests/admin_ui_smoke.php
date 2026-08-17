@@ -186,6 +186,10 @@ adminUiAssert(count($presented['diagnostics']) === 2, 'Administrator diagnostic 
 adminUiAssert($presented['diagnostics'][0]['message'] === 'sigwm_record_rename', 'Administrator history was not sorted with the newest event first.');
 adminUiAssert(!isset($presented['diagnostics'][1]['payload_json']) && !isset($presented['diagnostics'][1]['binding_mac']), 'Raw diagnostic payload values escaped administrator history.');
 adminUiAssert($presented['diagnostics'][0]['record'] === '12' && $presented['diagnostics'][0]['previous_record_id'] === '9', 'Administrator history did not preserve record-rename details.');
+$service->result['checks']['binding_econsent_ip_mac'] = true;
+$service->result['binding']['v'] = 3;
+$service->result['binding']['econsent_survey_id'] = 715;
+$service->result['binding']['econsent_ip_system_setting_enabled'] = true;
 $noRevealIpService = new AdministratorUiEconsentIpService();
 $noRevealController = new AdministratorVerificationController($repository, $service, $noRevealIpService, false);
 $noReveal = $noRevealController->verify(substr($captureReference, 2));
@@ -194,6 +198,9 @@ adminUiAssert(
     ($noReveal['econsent_ip_diagnostic']['status'] ?? null) === 'mismatch'
         && !isset($noReveal['econsent_ip_diagnostic']['signature_upload_ip'])
         && !isset($noReveal['econsent_ip_diagnostic']['econsent_submission_ip'])
+        && ($noReveal['details']['econsent_ip_system_setting_enabled'] ?? null) === true
+        && !isset($noReveal['details']['signature_upload_ip'])
+        && !isset($noReveal['details']['econsent_submission_ip'])
         && $noReveal['can_reveal_econsent_ips'] === false,
     'Administrator diagnostics exposed IP addresses without Database Query Tool access.'
 );
@@ -204,8 +211,10 @@ adminUiAssert(
     $revealIpService->revealArguments === array(true)
         && ($revealed['econsent_ip_diagnostic']['signature_upload_ip'] ?? null) === '203.0.113.25'
         && ($revealed['econsent_ip_diagnostic']['econsent_submission_ip'] ?? null) === '203.0.113.26'
+        && ($revealed['details']['signature_upload_ip'] ?? null) === '203.0.113.25'
+        && ($revealed['details']['econsent_submission_ip'] ?? null) === '203.0.113.26'
         && $revealed['can_reveal_econsent_ips'] === true,
-    'Administrator diagnostics did not reveal IP addresses after Database Query Tool access was confirmed.'
+    'Administrator details did not reveal IP addresses after Database Query Tool access was confirmed.'
 );
 $byEdocId = $controller->verifyEdocId('1903');
 adminUiAssert($byEdocId['lookup_type'] === 'edoc_id' && $byEdocId['lookup_value'] === 1903, 'Administrator edoc lookup was not identified as an edoc lookup.');

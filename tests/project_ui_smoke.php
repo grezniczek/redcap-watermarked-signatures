@@ -235,6 +235,10 @@ projectUiAssert($presented['details']['anchor'] === 'A:AAAA-BBBB-CCCC-DDDD', 'Au
 projectUiAssert($presented['field_url'] === '/redcap/DataEntry/index.php?pid=123&id=R-002&event_id=417&page=consent&instance=1', 'Project verification did not create the data-entry field URL.');
 projectUiAssert(!isset($presented['upload']) && !isset($presented['binding']), 'Raw verification payload escaped the project presenter.');
 projectUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive technical values escaped the allowlist.');
+$service->result['checks']['binding_econsent_ip_mac'] = true;
+$service->result['binding']['v'] = 3;
+$service->result['binding']['econsent_survey_id'] = 715;
+$service->result['binding']['econsent_ip_system_setting_enabled'] = true;
 $econsentIpService = new ProjectUiEconsentIpService();
 $econsentController = new ProjectVerificationController(123, $repository, $mac, $service, $allowedPolicy, $econsentIpService);
 $econsentPresented = $econsentController->verify($captureReference);
@@ -243,8 +247,9 @@ projectUiAssert(
     ($econsentPresented['econsent_ip_diagnostic']['status'] ?? null) === 'mismatch'
         && !isset($econsentPresented['econsent_ip_diagnostic']['signature_upload_ip'])
         && !isset($econsentPresented['econsent_ip_diagnostic']['econsent_submission_ip'])
+        && ($econsentPresented['details']['econsent_ip_system_setting_enabled'] ?? null) === true
         && $econsentPresented['can_reveal_econsent_ips'] === false,
-    'Project e-Consent IP diagnostics exposed IP addresses.'
+    'Project e-Consent IP diagnostics did not keep the setting state while suppressing IP addresses.'
 );
 $printedReference = substr($captureReference, 2);
 $controller->verify($printedReference);
