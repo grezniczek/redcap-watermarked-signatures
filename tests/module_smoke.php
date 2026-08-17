@@ -855,11 +855,14 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         $administratorFactoryDenied = true;
     }
     moduleAssert($administratorFactoryDenied, 'Non-administrator reached the global verification controller factory.');
-    $linkModule->testUser = new FakeUser(true, array());
-    moduleAssert($linkModule->redcap_module_link_check_display(null, $administratorVerificationLink) === $administratorVerificationLink, 'Administrator did not receive the global verification link.');
+    if (!defined('ACCESS_ADMIN_DASHBOARDS')) {
+        define('ACCESS_ADMIN_DASHBOARDS', true);
+    }
+    $linkModule->testUser = new FakeUser(false, array());
+    moduleAssert($linkModule->redcap_module_link_check_display(null, $administratorVerificationLink) === $administratorVerificationLink, 'Control Center dashboard user did not receive the global verification link.');
     moduleAssert(
         $linkModule->get_administrator_verification_controller() instanceof \DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController,
-        'Administrator could not create the global verification controller.'
+        'Control Center dashboard user could not create the global verification controller.'
     );
 
     $autoNumberModule = new WatermarkedSignaturesExternalModule();

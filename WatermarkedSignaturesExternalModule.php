@@ -316,11 +316,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	{
 		$linkKey = $link["key"] ?? "";
 		if ($linkKey === "administrator-signature-verification") {
-			try {
-				return $this->getUser()->isSuperUser() ? $link : null;
-			} catch (Throwable $exception) {
-				return null;
-			}
+			return $this->can_access_control_center_verification() ? $link : null;
 		}
 		if ($linkKey === "project-settings") {
 			return $this->can_configure_project_settings($project_id) ? $link : null;
@@ -565,7 +561,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	 */
 	public function get_administrator_verification_controller()
 	{
-		if (!$this->getUser()->isSuperUser()) {
+		if (!$this->can_access_control_center_verification()) {
 			throw new \RuntimeException("Administrator access is required for global signature verification.");
 		}
 
@@ -590,6 +586,15 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 
     #region Private Helpers
+
+	/**
+	 * Determines whether the current user should be allowed to access the control center verification page
+	 * @return bool
+	 */
+	private function can_access_control_center_verification()
+	{
+		return (defined('ACCESS_ADMIN_DASHBOARDS') && ACCESS_ADMIN_DASHBOARDS == 1);
+	}
 
 	/**
 	 * Build the version-aware binding MAC helper. The base key intentionally

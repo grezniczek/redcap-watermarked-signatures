@@ -1544,7 +1544,9 @@ follows:
     superusers or users with viewing access to an enabled signature instrument.
     Verification additionally enforces form rights and, where applicable, data
     access group membership. The administrator page is restricted to
-    superusers.
+    users with Control Center dashboard access. Plaintext e-Consent IP evidence
+    is separately restricted to users who can access the enabled Database Query
+    Tool.
 
 The hook details and authorization/verification boundaries are maintained in
 `hook_discovery.md` and `verification_contract.md`. Future decisions should be

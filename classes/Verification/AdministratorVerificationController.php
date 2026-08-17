@@ -10,6 +10,10 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
  */
 class AdministratorVerificationController
 {
+	const DETAIL_CAPTURED_ENCRYPTED = 'sigwm_captured_encrypted';
+	const DETAIL_NOT_CAPTURED = 'sigwm_not_captured';
+	const DETAIL_NOT_AVAILABLE = 'sigwm_not_available';
+
 	/** @var \DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository */
 	private $repository;
 
@@ -130,14 +134,10 @@ class AdministratorVerificationController
 			'repeat_instrument', 'repeat_instance', 'bound_at', 'save_origin',
 			'save_username'
 		));
+		$econsentIpDiagnostic = $result['econsent_ip_diagnostic'] ?? null;
 		if ($this->hasTrustedEconsentIpContext($result, $binding)) {
 			$details['econsent_ip_system_setting_enabled'] = $binding['econsent_ip_system_setting_enabled'];
-		}
-		$econsentIpDiagnostic = $result['econsent_ip_diagnostic'] ?? null;
-		if ($this->canRevealEconsentIps && is_array($econsentIpDiagnostic)) {
-			$this->copy($details, $econsentIpDiagnostic, array(
-				'signature_upload_ip', 'econsent_submission_ip'
-			));
+			$this->appendEconsentIpDetails($details, $binding, $econsentIpDiagnostic);
 		}
 		$details['record_id'] = $result['current_record_id'] ?? ($binding['record_id'] ?? null);
 		$this->copyMapped($details, $upload, array(
@@ -219,6 +219,39 @@ class AdministratorVerificationController
 			&& ($checks['binding_econsent_ip_mac'] ?? null) === true
 			&& ($binding['econsent_survey_id'] ?? null) !== null
 			&& array_key_exists('econsent_ip_system_setting_enabled', $binding);
+	}
+
+	/**
+	 * The Control Center page is available to a broader administrative group
+	 * than the Database Query Tool. Preserve two stable IP rows for applicable
+	 * evidence, but use a non-sensitive state label unless the shared DQT gate
+	 * authorized plaintext disclosure.
+	 *
+	 * @param array<string, mixed> $details
+	 * @param array<string, mixed> $binding
+	 * @param array<string, mixed>|null $diagnostic
+	 * @return void
+	 */
+	private function appendEconsentIpDetails(&$details, $binding, $diagnostic)
+	{
+		if (($binding['econsent_ip_capture_status'] ?? null) !== 'captured') {
+			$details['signature_upload_ip'] = self::DETAIL_NOT_CAPTURED;
+			$details['econsent_submission_ip'] = self::DETAIL_NOT_CAPTURED;
+			return;
+		}
+
+		if (!$this->canRevealEconsentIps || !is_array($diagnostic)) {
+			$details['signature_upload_ip'] = self::DETAIL_CAPTURED_ENCRYPTED;
+			$details['econsent_submission_ip'] = self::DETAIL_CAPTURED_ENCRYPTED;
+			return;
+		}
+
+		$details['signature_upload_ip'] = is_string($diagnostic['signature_upload_ip'] ?? null)
+			? $diagnostic['signature_upload_ip']
+			: self::DETAIL_NOT_AVAILABLE;
+		$details['econsent_submission_ip'] = is_string($diagnostic['econsent_submission_ip'] ?? null)
+			? $diagnostic['econsent_submission_ip']
+			: self::DETAIL_NOT_AVAILABLE;
 	}
 
 	/**

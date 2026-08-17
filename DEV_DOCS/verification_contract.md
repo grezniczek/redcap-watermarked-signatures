@@ -148,9 +148,11 @@ envelope nonces, binding MACs, log IDs, file bytes, or exception details.
 
 ## Administrator page adapter (Phase 5C)
 
-The Control Center page is available only to REDCap superusers. Its link-display
-hook and controller factory both enforce that requirement, so direct page access
-uses the same authorization boundary as menu visibility.
+The Control Center page is available to users with REDCap's Control Center
+dashboard access. Its link-display hook and controller factory both enforce
+that requirement, so direct page access uses the same authorization boundary as
+menu visibility. Plaintext e-Consent IP addresses remain separately restricted
+to users who can access the enabled Database Query Tool.
 
 The page is an exact global lookup only. It accepts either a capture-reference
 suffix (normalized to `S:...`) or a positive numeric edoc ID by CSRF-protected

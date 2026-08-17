@@ -138,8 +138,11 @@ warning that requires context (for example, a prolonged session or a changed
 network); it does not make the signature invalid. If system IP capture was off
 at upload time, or either value is unavailable, the result is **not tested**.
 Project verification never shows either address. Administrator verification can
-show them only to a REDCap superuser while the Control Center Database Query
-Tool is enabled.
+show them only to a Control Center user who can access the enabled Database
+Query Tool. For a trusted applicable e-Consent binding, the Administrator
+signature details table always includes **Signature-upload IP** and
+**e-Consent submission IP** rows. Users without Database Query Tool access see
+**Captured (encrypted)** rather than either plaintext address.
 
 ## Verify a signature
 
@@ -176,9 +179,9 @@ The result includes these checks when they can be performed:
 
 ### Administrator verification page
 
-REDCap superusers can use **Administrator signature verification** in the
-Control Center. It performs the same verification across all projects using the
-module and accepts either:
+Users with REDCap's Control Center dashboard access can use **Administrator
+signature verification**. It performs the same verification across all projects
+using the module and accepts either:
 
 - the complete capture-reference suffix printed after `S:`; or
 - a positive numeric edoc ID.
@@ -229,7 +232,7 @@ field, and approximate time of the attempt.
 The project link appears only when the user can view at least one instrument
 with a configured signature field. Check the user's form-level rights and DAG
 membership. The Control Center verification page is visible only to REDCap
-superusers.
+users with Control Center dashboard access.
 
 ### The result is unbound, historical, incomplete, or failed
 
@@ -250,7 +253,8 @@ field clear; a failed result should be treated as an integrity issue.
   and show authorized metadata only.
 - For e-Consent surveys, any upload-time IP retained by the module is encrypted
   in module-log payloads. Project diagnostics never disclose it; administrator
-  disclosure requires both superuser access and an enabled Database Query Tool.
+  disclosure requires an enabled Database Query Tool and the user's permission
+  to access it.
 - Successful bindings, record-rename history, and serious errors are retained.
   Only unbound upload provenance is eligible for scheduled cleanup.
 

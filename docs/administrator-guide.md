@@ -53,8 +53,8 @@ Changing the public project reference, field annotation, or background-image set
 ## Use Control Center verification
 
 Select **Administrator signature verification** in the Control Center. This
-page is available only to REDCap superusers and searches all projects using the
-module.
+page is available to users with REDCap's Control Center dashboard access and
+searches all projects using the module.
 
 Enter exactly one of the following:
 
@@ -81,9 +81,13 @@ IP in the matching stored e-Consent PDF archive row.
 Treat a mismatch as a forensic warning, not a signature-integrity failure. A
 comparison can be **not tested** because capture was disabled at the time, the
 upload-time IP was unavailable, or REDCap has no usable stored e-Consent IP.
-The Control Center page shows raw IP values only when the viewer is a superuser
-and the Database Query Tool is enabled. In every other module-log and project
-diagnostic view, the retained address remains encrypted or is omitted.
+For a trusted applicable e-Consent binding, the signature details table always
+shows **Signature-upload IP** and **e-Consent submission IP**. The Control
+Center page shows raw IP values only to a viewer who can access the enabled
+Database Query Tool. Other Control Center users see **Captured (encrypted)**;
+uncaptured and unreadable values are identified without exposing an address.
+In every module-log and project diagnostic view, the retained address remains
+encrypted or is omitted.
 
 ## Triage verification results
 
