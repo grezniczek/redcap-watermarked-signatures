@@ -139,6 +139,9 @@ class AdministratorVerificationController
 			$details['econsent_ip_system_setting_enabled'] = $binding['econsent_ip_system_setting_enabled'];
 			$this->appendEconsentIpDetails($details, $binding, $econsentIpDiagnostic);
 		}
+		if ($this->hasTrustedDataEntryIpContext($result, $binding)) {
+			$this->appendDataEntryIpDetails($details, $binding);
+		}
 		$details['record_id'] = $result['current_record_id'] ?? ($binding['record_id'] ?? null);
 		$this->copyMapped($details, $upload, array(
 			'pid' => 'upload_project_id',
@@ -216,9 +219,26 @@ class AdministratorVerificationController
 	{
 		$checks = isset($result['checks']) && is_array($result['checks']) ? $result['checks'] : array();
 		return (int) ($binding['v'] ?? 0) >= 3
+			&& ($checks['binding_mac'] ?? null) === true
 			&& ($checks['binding_econsent_ip_mac'] ?? null) === true
 			&& ($binding['econsent_survey_id'] ?? null) !== null
 			&& array_key_exists('econsent_ip_system_setting_enabled', $binding);
+	}
+
+	/**
+	 * @param array<string, mixed> $result
+	 * @param array<string, mixed> $binding
+	 * @return bool
+	 */
+	private function hasTrustedDataEntryIpContext($result, $binding)
+	{
+		$checks = isset($result['checks']) && is_array($result['checks']) ? $result['checks'] : array();
+		return (int) ($binding['v'] ?? 0) >= 3
+			&& ($checks['binding_mac'] ?? null) === true
+			&& ($checks['binding_econsent_ip_mac'] ?? null) === true
+			&& ($binding['capture_origin'] ?? null) === 'data_entry'
+			&& array_key_exists('data_entry_signature_ip_capture_status', $binding)
+			&& array_key_exists('data_entry_signature_ip_ciphertext', $binding);
 	}
 
 	/**
@@ -252,6 +272,38 @@ class AdministratorVerificationController
 		$details['econsent_submission_ip'] = is_string($diagnostic['econsent_submission_ip'] ?? null)
 			? $diagnostic['econsent_submission_ip']
 			: self::DETAIL_NOT_AVAILABLE;
+	}
+
+	/**
+	 * Data-entry captures have no REDCap e-Consent archive value to compare.
+	 * The upload address is nevertheless encrypted and binding-authenticated for
+	 * authorized forensic review.
+	 *
+	 * @param array<string, mixed> $details
+	 * @param array<string, mixed> $binding
+	 * @return void
+	 */
+	private function appendDataEntryIpDetails(&$details, $binding)
+	{
+		if (($binding['data_entry_signature_ip_capture_status'] ?? null) !== 'captured') {
+			$details['signature_upload_ip'] = self::DETAIL_NOT_CAPTURED;
+			return;
+		}
+		if (!$this->canRevealEconsentIps || $this->econsentIpService === null
+			|| !method_exists($this->econsentIpService, 'dataEntrySignatureIp')) {
+			$details['signature_upload_ip'] = self::DETAIL_CAPTURED_ENCRYPTED;
+			return;
+		}
+
+		try {
+			$diagnostic = $this->econsentIpService->dataEntrySignatureIp($binding, true);
+			$details['signature_upload_ip'] = is_array($diagnostic)
+				&& is_string($diagnostic['signature_upload_ip'] ?? null)
+				? $diagnostic['signature_upload_ip']
+				: self::DETAIL_NOT_AVAILABLE;
+		} catch (Throwable $exception) {
+			$details['signature_upload_ip'] = self::DETAIL_NOT_AVAILABLE;
+		}
 	}
 
 	/**

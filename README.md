@@ -129,7 +129,10 @@ address, the module encrypts that address before writing it to the upload
 provenance and carries the same encrypted value into the final binding. The 
 address is authenticated to the signature's project, event, instrument, field, 
 and capture reference; it is never written as a plaintext module-log parameter. Data-entry captures and ordinary surveys are explicitly not part of this 
-comparison.
+comparison. For a signature captured from a data-entry form, the module always
+attempts to capture the client IP independently of the e-Consent setting and
+retains it as encrypted, binding-authenticated provenance. A data-entry capture
+has no e-Consent PDF archive address, so it is never compared.
 
 Verification treats this as a diagnostic, not an integrity check. For an
 applicable, completed e-Consent survey, it compares the encrypted upload-time
@@ -170,7 +173,7 @@ The result includes these checks when they can be performed:
 |---|---|
 | **Binding MAC** | The saved binding record has not been altered. |
 | **Binding extension MAC** | For format-v2 signatures, the optional field-specific `REF:` mark has not been altered. |
-| **e-Consent IP binding MAC** | For format-v3 signatures, the encrypted e-Consent-IP capture context has not been altered. |
+| **IP capture binding MAC** | For format-v3 signatures, the encrypted e-Consent and data-entry IP-capture context has not been altered. |
 | **Upload/binding relationship** | The binding matches the captured signature provenance. |
 | **Stable-scope anchor** | The watermark scope is consistent with the project, event, instrument, and field. |
 | **Edoc exists** | The saved REDCap file is still available. |
@@ -191,7 +194,8 @@ technical log history, including relevant binding, rename, and error events.
 It does not expose signature bytes, signed-envelope values, or binding MAC
 values. For e-Consent IP diagnostics, plaintext addresses are additionally
 gated by the enabled Database Query Tool; the encrypted module-log payload
-remains restorable for authorized forensic review.
+remains restorable for authorized forensic review. The same gate applies to a
+data-entry signature's encrypted upload IP; it has no e-Consent comparison.
 
 ### Understand the result
 
@@ -254,7 +258,9 @@ field clear; a failed result should be treated as an integrity issue.
 - For e-Consent surveys, any upload-time IP retained by the module is encrypted
   in module-log payloads. Project diagnostics never disclose it; administrator
   disclosure requires an enabled Database Query Tool and the user's permission
-  to access it.
+  to access it. The module applies the same encryption and disclosure boundary
+  when it captures an IP for a data-entry signature upload, independently of
+  the e-Consent setting.
 - Successful bindings, record-rename history, and serious errors are retained.
   Only unbound upload provenance is eligible for scheduled cleanup.
 

@@ -13,7 +13,7 @@ class BindingMac
 	/** @var string|null Binary HMAC key for format-v2 binding extensions. */
 	private $extensionKey;
 
-	/** @var string|null Binary HMAC key for encrypted e-Consent-IP provenance. */
+	/** @var string|null Binary HMAC key for format-v3 encrypted IP-capture provenance. */
 	private $econsentIpExtensionKey;
 
 	/** @var array<int, string> */
@@ -76,28 +76,32 @@ class BindingMac
 		'field_reference'
 	);
 
-	/** @var array<int, string> Fields protected by the format-v3 e-Consent-IP MAC. */
+	/** @var array<int, string> Fields protected by the format-v3 IP-capture MAC. */
 	private static $econsentIpExtensionFields = array(
 		'v',
 		'binding_mac',
 		'econsent_survey_id',
 		'econsent_ip_system_setting_enabled',
 		'econsent_ip_capture_status',
-		'econsent_signature_ip_ciphertext'
+		'econsent_signature_ip_ciphertext',
+		'data_entry_signature_ip_capture_status',
+		'data_entry_signature_ip_ciphertext'
 	);
 
-	/** @var array<int, string> Values that must agree for an idempotent v3 binding. */
+	/** @var array<int, string> Values that must agree for an idempotent v3 IP-capture binding. */
 	private static $econsentIpValueFields = array(
 		'econsent_survey_id',
 		'econsent_ip_system_setting_enabled',
 		'econsent_ip_capture_status',
-		'econsent_signature_ip_ciphertext'
+		'econsent_signature_ip_ciphertext',
+		'data_entry_signature_ip_capture_status',
+		'data_entry_signature_ip_ciphertext'
 	);
 
 	/**
 	 * @param string $key Binary HMAC key of at least 32 bytes.
 	 * @param string|null $extensionKey Independently derived extension-MAC key.
-	 * @param string|null $econsentIpExtensionKey Independently derived e-Consent-IP MAC key.
+	 * @param string|null $econsentIpExtensionKey Independently derived format-v3 IP-capture MAC key.
 	 * @return void
 	 */
 	public function __construct($key, $extensionKey = null, $econsentIpExtensionKey = null)
@@ -109,7 +113,7 @@ class BindingMac
 			throw new \InvalidArgumentException('Binding extension key must contain at least 32 bytes.');
 		}
 		if ($econsentIpExtensionKey !== null && (!is_string($econsentIpExtensionKey) || strlen($econsentIpExtensionKey) < 32)) {
-			throw new \InvalidArgumentException('e-Consent-IP binding key must contain at least 32 bytes.');
+			throw new \InvalidArgumentException('IP-capture binding key must contain at least 32 bytes.');
 		}
 		$this->key = $key;
 		$this->extensionKey = $extensionKey;
@@ -176,8 +180,8 @@ class BindingMac
 
 	/**
 	 * Create the independently keyed MAC for the format-v3 encrypted
-	 * e-Consent-IP context. The ciphertext remains confidential, while this
-	 * MAC makes its capture status and survey applicability immutable.
+	 * IP-capture context. The ciphertext remains confidential, while this MAC
+	 * makes e-Consent applicability and data-entry capture status immutable.
 	 *
 	 * @param array<string, mixed> $binding Complete binding with its base MAC value.
 	 * @return string Base64url-encoded extension MAC.
@@ -185,15 +189,15 @@ class BindingMac
 	public function createEconsentIpExtension($binding)
 	{
 		if ($this->econsentIpExtensionKey === null) {
-			throw new \LogicException('An e-Consent-IP binding key is required.');
+			throw new \LogicException('An IP-capture binding key is required.');
 		}
 		$payload = $this->payloadForFields($binding, self::$econsentIpExtensionFields);
 		return Base64Url::encode(hash_hmac('sha256', CanonicalJson::encode($payload), $this->econsentIpExtensionKey, true));
 	}
 
 	/**
-	 * @param array<string, mixed> $binding Complete format-v3 binding with its e-Consent-IP MAC.
-	 * @return bool Whether the supplied e-Consent-IP MAC authenticates this extension.
+	 * @param array<string, mixed> $binding Complete format-v3 binding with its IP-capture MAC.
+	 * @return bool Whether the supplied IP-capture MAC authenticates this extension.
 	 */
 	public function verifyEconsentIpExtension($binding)
 	{
@@ -238,7 +242,7 @@ class BindingMac
 	/**
 	 * @param array<string, mixed> $left
 	 * @param array<string, mixed> $right
-	 * @return bool Whether both bindings have the same v3 e-Consent-IP context.
+	 * @return bool Whether both bindings have the same v3 IP-capture context.
 	 */
 	public function econsentIpValuesEqual($left, $right)
 	{
@@ -262,7 +266,7 @@ class BindingMac
 
 	/**
 	 * @param array<string, mixed> $binding
-	 * @return bool Whether this binding format requires the e-Consent-IP MAC.
+	 * @return bool Whether this binding format requires the IP-capture MAC.
 	 */
 	public function requiresEconsentIpExtension($binding)
 	{

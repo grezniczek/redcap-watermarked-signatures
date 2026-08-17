@@ -1,5 +1,17 @@
 <?php
 
+namespace {
+    class System
+    {
+        public static $ip = null;
+
+        public static function clientIpAddress()
+        {
+            return self::$ip;
+        }
+    }
+}
+
 namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     class ExternalModulesStub
     {
@@ -463,6 +475,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
 
     $GLOBALS['salt'] = 'redcap-test-installation-salt';
     $GLOBALS['salt2'] = 'redcap-test-installation-salt-2';
+    \System::$ip = '203.0.113.25';
 
     $image = imagecreatetruecolor(460, 120);
     $white = imagecolorallocate($image, 255, 255, 255);
@@ -1041,6 +1054,13 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($uploadProvenance['watermark_version'] === 1, 'Provenance did not retain the WM1 format version.');
     moduleAssert((bool) preg_match('/Z$/', $uploadProvenance['captured_at']), 'Provenance timestamp is not UTC.');
     moduleAssert($uploadProvenance['capture_origin'] === 'data_entry', 'Upload provenance did not retain the data-entry origin.');
+    moduleAssert(
+        $uploadProvenance['data_entry_signature_ip_capture_status'] === 'captured'
+            && is_string($uploadProvenance['data_entry_signature_ip_ciphertext'])
+            && strpos($uploadProvenance['data_entry_signature_ip_ciphertext'], '203.0.113.25') === false
+            && strpos($module->logs[0][1]['payload_json'], '203.0.113.25') === false,
+        'Data-entry signature IP was not stored as encrypted provenance.'
+    );
     moduleAssert($uploadProvenance['capture_username'] === 'data-entry-user', 'Upload provenance did not retain the current username.');
     moduleAssert($uploadProvenance['project_reference'] === 'SIGWM-TEST', 'Upload provenance did not retain the public project reference snapshot.');
     moduleAssert($uploadProvenance['field_reference'] === null, 'A legacy envelope without a field reference did not remain valid.');
@@ -1109,6 +1129,12 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($storedBinding['project_reference'] === 'SIGWM-TEST', 'Binding did not retain the public project reference snapshot.');
     moduleAssert(isset($storedBinding['binding_mac']), 'Binding MAC was not stored.');
     moduleAssert(isset($storedBinding['binding_extension_mac']), 'Binding extension MAC was not stored.');
+    moduleAssert(
+        $storedBinding['data_entry_signature_ip_ciphertext'] === $uploadProvenance['data_entry_signature_ip_ciphertext']
+            && isset($storedBinding['binding_econsent_ip_mac'])
+            && !in_array($storedBinding['data_entry_signature_ip_ciphertext'], $module->logs[1][1], true),
+        'Data-entry signature IP evidence was not bound without becoming a log parameter.'
+    );
 
     $module->redcap_save_record(123, 'R-001', 'consent', 417, null, null, null, 1);
     moduleAssert(count($module->logs) === 2, 'Repeated save appended a duplicate binding.');

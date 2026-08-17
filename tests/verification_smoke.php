@@ -263,7 +263,9 @@ function verificationBinding($upload, BindingMac $mac)
 		'econsent_survey_id',
 		'econsent_ip_system_setting_enabled',
 		'econsent_ip_capture_status',
-		'econsent_signature_ip_ciphertext'
+		'econsent_signature_ip_ciphertext',
+		'data_entry_signature_ip_capture_status',
+		'data_entry_signature_ip_ciphertext'
 	) as $field) {
 		if (array_key_exists($field, $upload)) {
 			$binding[$field] = $upload[$field];
@@ -365,6 +367,8 @@ $v3Upload['econsent_survey_id'] = 715;
 $v3Upload['econsent_ip_system_setting_enabled'] = true;
 $v3Upload['econsent_ip_capture_status'] = 'captured';
 $v3Upload['econsent_signature_ip_ciphertext'] = 'EIP1.MTIzNDU2Nzg5MDEy.MTIzNDU2Nzg5MDEyMzQ1Ng.c2lnbmF0dXJlLWlw';
+$v3Upload['data_entry_signature_ip_capture_status'] = 'not_applicable';
+$v3Upload['data_entry_signature_ip_ciphertext'] = null;
 $v3Binding = verificationBinding($v3Upload, $mac);
 list($v3Service) = verificationHarness($v3Upload, $v3Binding, $bytes);
 $v3Result = $v3Service->verify($v3Reference, 123);
@@ -382,6 +386,36 @@ verificationAssert(
 	&& $tamperedV3Result['checks']['binding_econsent_ip_mac'] === false
 	&& in_array('binding_econsent_ip_mac_mismatch', $tamperedV3Result['issues'], true),
 	'Changed format-v3 e-Consent IP context did not fail its dedicated MAC.'
+);
+
+$v3DataEntryReference = ReferenceGenerator::captureReference();
+$v3DataEntryUpload = verificationUpload($v3DataEntryReference, 98145, $bytes);
+$v3DataEntryUpload['v'] = 3;
+$v3DataEntryUpload['field_reference'] = 'CONSENT';
+$v3DataEntryUpload['capture_origin'] = 'data_entry';
+$v3DataEntryUpload['econsent_survey_id'] = null;
+$v3DataEntryUpload['econsent_ip_system_setting_enabled'] = null;
+$v3DataEntryUpload['econsent_ip_capture_status'] = 'not_applicable';
+$v3DataEntryUpload['econsent_signature_ip_ciphertext'] = null;
+$v3DataEntryUpload['data_entry_signature_ip_capture_status'] = 'captured';
+$v3DataEntryUpload['data_entry_signature_ip_ciphertext'] = 'EIP1.MTIzNDU2Nzg5MDEy.MTIzNDU2Nzg5MDEyMzQ1Ng.ZGF0YS1lbnRyeS1pcA';
+$v3DataEntryBinding = verificationBinding($v3DataEntryUpload, $mac);
+list($v3DataEntryService) = verificationHarness($v3DataEntryUpload, $v3DataEntryBinding, $bytes);
+$v3DataEntryResult = $v3DataEntryService->verify($v3DataEntryReference, 123);
+verificationAssert(
+    $v3DataEntryResult['status'] === 'valid_current'
+        && $v3DataEntryResult['checks']['binding_econsent_ip_mac'] === true,
+    'Valid format-v3 data-entry IP provenance did not verify.'
+);
+$tamperedV3DataEntryBinding = $v3DataEntryBinding;
+$tamperedV3DataEntryBinding['data_entry_signature_ip_capture_status'] = 'not_captured_client_ip_unavailable';
+list($tamperedV3DataEntryService) = verificationHarness($v3DataEntryUpload, $tamperedV3DataEntryBinding, $bytes);
+$tamperedV3DataEntryResult = $tamperedV3DataEntryService->verify($v3DataEntryReference, 123);
+verificationAssert(
+    $tamperedV3DataEntryResult['status'] === 'invalid'
+        && $tamperedV3DataEntryResult['checks']['binding_econsent_ip_mac'] === false
+        && in_array('binding_econsent_ip_mac_mismatch', $tamperedV3DataEntryResult['issues'], true),
+    'Changed format-v3 data-entry IP context did not fail its dedicated MAC.'
 );
 
 $renamedReference = ReferenceGenerator::captureReference();

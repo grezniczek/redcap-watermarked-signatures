@@ -81,14 +81,51 @@ try {
 }
 econsentIpAssert($wrongScopeWasRejected, 'Encrypted signature IP could be moved to another field scope.');
 
-$notApplicable = $service->capture($project, 123, 417, 'consent', 'participant_signature', 'data_entry', $captureReference);
+$dataEntryCapture = $service->capture($project, 123, 417, 'consent', 'participant_signature', 'data_entry', $captureReference);
 econsentIpAssert(
-    $notApplicable['econsent_ip_capture_status'] === IpService::STATUS_NOT_APPLICABLE
-        && $notApplicable['econsent_signature_ip_ciphertext'] === null,
-    'Non-survey signatures incorrectly retained e-Consent IP data.'
+    $dataEntryCapture['econsent_ip_capture_status'] === IpService::STATUS_NOT_APPLICABLE
+        && $dataEntryCapture['econsent_signature_ip_ciphertext'] === null
+        && $dataEntryCapture['data_entry_signature_ip_capture_status'] === IpService::STATUS_CAPTURED
+        && IpService::isValidDataEntryCaptureContext($dataEntryCapture, 'data_entry')
+        && strpos($dataEntryCapture['data_entry_signature_ip_ciphertext'], '203.0.113.25') === false,
+    'Data-entry signature IP was not retained as encrypted upload provenance.'
+);
+econsentIpAssert(
+    $cipher->decrypt(
+        $dataEntryCapture['data_entry_signature_ip_ciphertext'],
+        IpService::associatedData(123, 417, 'consent', 'participant_signature', $captureReference)
+    ) === '203.0.113.25',
+    'Encrypted data-entry signature IP could not be restored with its binding context.'
+);
+econsentIpAssert(
+    $service->dataEntrySignatureIp(array_merge(array(
+        'pid' => 123,
+        'event_id' => 417,
+        'instrument' => 'consent',
+        'field' => 'participant_signature',
+        'capture_ref' => $captureReference
+    ), $dataEntryCapture), false) === array('status' => IpService::STATUS_CAPTURED),
+    'Data-entry IP disclosure returned plaintext without authorization.'
+);
+$dataEntryForensic = $service->dataEntrySignatureIp(array_merge(array(
+    'pid' => 123,
+    'event_id' => 417,
+    'instrument' => 'consent',
+    'field' => 'participant_signature',
+    'capture_ref' => $captureReference
+), $dataEntryCapture), true);
+econsentIpAssert(
+    $dataEntryForensic['status'] === IpService::STATUS_CAPTURED
+        && $dataEntryForensic['signature_upload_ip'] === '203.0.113.25',
+    'Authorized data-entry IP disclosure did not restore the upload address.'
 );
 
 $GLOBALS['pdf_econsent_system_ip'] = '0';
+$dataEntryWithDisabledEconsentSetting = $service->capture($project, 123, 417, 'consent', 'participant_signature', 'data_entry', $captureReference);
+econsentIpAssert(
+    $dataEntryWithDisabledEconsentSetting['data_entry_signature_ip_capture_status'] === IpService::STATUS_CAPTURED,
+    'Data-entry IP capture incorrectly depended on the e-Consent IP setting.'
+);
 $disabled = $service->capture($project, 123, 417, 'consent', 'participant_signature', 'survey', $captureReference);
 econsentIpAssert(
     $disabled['econsent_ip_capture_status'] === IpService::STATUS_SYSTEM_DISABLED

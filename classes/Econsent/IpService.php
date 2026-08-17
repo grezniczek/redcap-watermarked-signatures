@@ -6,8 +6,8 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\CanonicalJson;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\IpCipher;
 
 /**
- * Captures and compares the IP address that REDCap associates with a
- * participant-facing e-Consent submission.
+ * Captures upload IP evidence and compares the e-Consent subset with the
+ * participant-facing e-Consent submission recorded by REDCap.
  *
  * Plaintext addresses never enter an External Module log parameter. They are
  * retained only as authenticated ciphertext in the upload and binding payloads.
@@ -34,9 +34,9 @@ class IpService
 	/**
 	 * Capture the IP-related provenance fields for one signature upload.
 	 *
-	 * Data-entry captures are deliberately outside scope even when the same
-	 * instrument is also configured as e-Consent: REDCap itself only captures
-	 * this IP for a participant-facing e-Consent survey completion.
+	 * Data-entry captures are always retained as encrypted provenance. The
+	 * e-Consent setting and archive comparison remain specific to
+	 * participant-facing e-Consent surveys.
 	 *
 	 * @param \Project $project
 	 * @param int|string $projectId
@@ -50,6 +50,25 @@ class IpService
 	public function capture($project, $projectId, $eventId, $instrument, $field, $captureOrigin, $captureReference)
 	{
 		$context = $this->emptyContext();
+		if ($captureOrigin === 'data_entry') {
+			$ip = $this->clientIpAddress();
+			if ($ip === null) {
+				$context['data_entry_signature_ip_capture_status'] = self::STATUS_CLIENT_IP_UNAVAILABLE;
+				return $context;
+			}
+			try {
+				$context['data_entry_signature_ip_ciphertext'] = $this->cipher->encrypt(
+					$ip,
+					self::associatedData($projectId, $eventId, $instrument, $field, $captureReference)
+				);
+				$context['data_entry_signature_ip_capture_status'] = self::STATUS_CAPTURED;
+			} catch (\Throwable $exception) {
+				// This optional forensic evidence must never block the signature.
+				$context['data_entry_signature_ip_capture_status'] = self::STATUS_CLIENT_IP_UNAVAILABLE;
+			}
+			return $context;
+		}
+
 		if ($captureOrigin !== 'survey' || !is_object($project)) {
 			return $context;
 		}
@@ -159,6 +178,49 @@ class IpService
 	}
 
 	/**
+	 * Restore a trusted data-entry upload IP only when the caller has already
+	 * authorized plaintext disclosure. Unlike e-Consent evidence, this has no
+	 * corresponding survey archive value to compare.
+	 *
+	 * @param array<string, mixed> $binding
+	 * @param bool $revealIps
+	 * @return array<string, mixed>|null
+	 */
+	public function dataEntrySignatureIp($binding, $revealIps)
+	{
+		if (!is_array($binding) || !array_key_exists('data_entry_signature_ip_capture_status', $binding)) {
+			return null;
+		}
+
+		$status = $binding['data_entry_signature_ip_capture_status'];
+		if ($status === self::STATUS_NOT_APPLICABLE) {
+			return array('status' => self::STATUS_NOT_APPLICABLE);
+		}
+		if ($status !== self::STATUS_CAPTURED) {
+			return array('status' => 'not_captured');
+		}
+		if (!$revealIps) {
+			return array('status' => self::STATUS_CAPTURED);
+		}
+
+		try {
+			$ip = $this->cipher->decrypt(
+				$binding['data_entry_signature_ip_ciphertext'] ?? '',
+				self::associatedData(
+					$binding['pid'] ?? null,
+					$binding['event_id'] ?? null,
+					$binding['instrument'] ?? null,
+					$binding['field'] ?? null,
+					$binding['capture_ref'] ?? null
+				)
+			);
+			return array('status' => self::STATUS_CAPTURED, 'signature_upload_ip' => $ip);
+		} catch (\Throwable $exception) {
+			return array('status' => 'not_available');
+		}
+	}
+
+	/**
 	 * @return array<string, mixed>
 	 */
 	private function emptyContext()
@@ -167,7 +229,9 @@ class IpService
 			'econsent_survey_id' => null,
 			'econsent_ip_system_setting_enabled' => null,
 			'econsent_ip_capture_status' => self::STATUS_NOT_APPLICABLE,
-			'econsent_signature_ip_ciphertext' => null
+			'econsent_signature_ip_ciphertext' => null,
+			'data_entry_signature_ip_capture_status' => self::STATUS_NOT_APPLICABLE,
+			'data_entry_signature_ip_ciphertext' => null
 		);
 	}
 
@@ -320,7 +384,37 @@ class IpService
 		}
 		return $status === self::STATUS_CAPTURED
 			&& $enabled === true
-			&& is_string($ciphertext)
+			&& self::isCiphertext($ciphertext);
+	}
+
+	/**
+	 * @param array<string, mixed> $context
+	 * @param string $captureOrigin
+	 * @return bool
+	 */
+	public static function isValidDataEntryCaptureContext($context, $captureOrigin)
+	{
+		if (!is_array($context)
+			|| !array_key_exists('data_entry_signature_ip_capture_status', $context)
+			|| !array_key_exists('data_entry_signature_ip_ciphertext', $context)) {
+			return false;
+		}
+
+		$status = $context['data_entry_signature_ip_capture_status'];
+		$ciphertext = $context['data_entry_signature_ip_ciphertext'];
+		if ($captureOrigin !== 'data_entry') {
+			return $status === self::STATUS_NOT_APPLICABLE && $ciphertext === null;
+		}
+		if ($status === self::STATUS_CLIENT_IP_UNAVAILABLE) {
+			return $ciphertext === null;
+		}
+		return $status === self::STATUS_CAPTURED && self::isCiphertext($ciphertext);
+	}
+
+	/** @return bool */
+	private static function isCiphertext($ciphertext)
+	{
+		return is_string($ciphertext)
 			&& preg_match('/^' . IpCipher::FORMAT . '\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/', $ciphertext) === 1;
 	}
 }

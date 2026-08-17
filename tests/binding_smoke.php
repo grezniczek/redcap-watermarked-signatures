@@ -258,6 +258,8 @@ $v3Binding['econsent_survey_id'] = 715;
 $v3Binding['econsent_ip_system_setting_enabled'] = true;
 $v3Binding['econsent_ip_capture_status'] = 'captured';
 $v3Binding['econsent_signature_ip_ciphertext'] = 'EIP1.MTIzNDU2Nzg5MDEy.MTIzNDU2Nzg5MDEyMzQ1Ng.c2lnbmF0dXJlLWlw';
+$v3Binding['data_entry_signature_ip_capture_status'] = 'not_applicable';
+$v3Binding['data_entry_signature_ip_ciphertext'] = null;
 $v3Binding['binding_mac'] = $v3Mac->create($v3Binding);
 $v3Binding['binding_extension_mac'] = $v3Mac->createExtension($v3Binding);
 $v3Binding['binding_econsent_ip_mac'] = $v3Mac->createEconsentIpExtension($v3Binding);
@@ -270,6 +272,21 @@ $tamperedV3Ip['econsent_signature_ip_ciphertext'] = 'EIP1.MTIzNDU2Nzg5MDEy.MTIzN
 bindingAssert($v3Mac->verify($tamperedV3Ip), 'Changing only v3 IP context unexpectedly changed the base MAC.');
 bindingAssert($v3Mac->verifyExtension($tamperedV3Ip), 'Changing only v3 IP context unexpectedly changed the field-reference extension MAC.');
 bindingAssert(!$v3Mac->verifyEconsentIpExtension($tamperedV3Ip), 'e-Consent-IP MAC did not detect a changed ciphertext.');
+
+$v3DataEntryBinding = $v3Binding;
+$v3DataEntryBinding['econsent_survey_id'] = null;
+$v3DataEntryBinding['econsent_ip_system_setting_enabled'] = null;
+$v3DataEntryBinding['econsent_ip_capture_status'] = 'not_applicable';
+$v3DataEntryBinding['econsent_signature_ip_ciphertext'] = null;
+$v3DataEntryBinding['data_entry_signature_ip_capture_status'] = 'captured';
+$v3DataEntryBinding['data_entry_signature_ip_ciphertext'] = 'EIP1.MTIzNDU2Nzg5MDEy.MTIzNDU2Nzg5MDEyMzQ1Ng.ZGF0YS1lbnRyeS1pcA';
+$v3DataEntryBinding['binding_mac'] = $v3Mac->create($v3DataEntryBinding);
+$v3DataEntryBinding['binding_extension_mac'] = $v3Mac->createExtension($v3DataEntryBinding);
+$v3DataEntryBinding['binding_econsent_ip_mac'] = $v3Mac->createEconsentIpExtension($v3DataEntryBinding);
+bindingAssert($v3Mac->verifyEconsentIpExtension($v3DataEntryBinding), 'Format-v3 data-entry IP context was not authenticated.');
+$tamperedV3DataEntryIp = $v3DataEntryBinding;
+$tamperedV3DataEntryIp['data_entry_signature_ip_ciphertext'] = 'EIP1.MTIzNDU2Nzg5MDEy.MTIzNDU2Nzg5MDEyMzQ1Ng.dGFtcGVyZWQ';
+bindingAssert(!$v3Mac->verifyEconsentIpExtension($tamperedV3DataEntryIp), 'Format-v3 IP MAC did not detect a changed data-entry ciphertext.');
 
 // Accept the short-lived development format that included field_reference in
 // the v1 base-MAC payload before the released v2 extension format existed.

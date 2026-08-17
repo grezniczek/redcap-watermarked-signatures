@@ -716,9 +716,11 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 						'econsent_survey_id',
 						'econsent_ip_system_setting_enabled',
 						'econsent_ip_capture_status',
-						'econsent_signature_ip_ciphertext'
-					) as $econsentField) {
-						$binding[$econsentField] = $upload[$econsentField];
+						'econsent_signature_ip_ciphertext',
+						'data_entry_signature_ip_capture_status',
+						'data_entry_signature_ip_ciphertext'
+					) as $ipCaptureField) {
+						$binding[$ipCaptureField] = $upload[$ipCaptureField];
 					}
 				}
 				$repository->bindOnce($binding);
@@ -782,6 +784,10 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		}
 		if ((int) ($upload['v'] ?? 1) >= 3 && !IpService::isValidCaptureContext($upload)) {
 			throw new \UnexpectedValueException('Upload provenance contains invalid e-Consent IP capture context.');
+		}
+		if ((int) ($upload['v'] ?? 1) >= 3
+			&& !IpService::isValidDataEntryCaptureContext($upload, $upload['capture_origin'])) {
+			throw new \UnexpectedValueException('Upload provenance contains invalid data-entry IP capture context.');
 		}
 		if (
 			array_key_exists("background_image_mode", $upload)

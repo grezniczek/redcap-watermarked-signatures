@@ -481,7 +481,7 @@ class LogRepository
 
 	/**
 	 * @param array<string, mixed> $binding
-	 * @return bool Whether this binding format requires the e-Consent-IP MAC.
+	 * @return bool Whether this binding format requires the format-v3 IP-capture MAC.
 	 */
 	private function requiresEconsentIpExtension($binding)
 	{

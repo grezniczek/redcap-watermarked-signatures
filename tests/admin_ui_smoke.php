@@ -75,6 +75,7 @@ class AdministratorUiService
 class AdministratorUiEconsentIpService
 {
     public $revealArguments = array();
+    public $dataEntryRevealArguments = array();
 
     public function compare($binding, $recordId, $revealIps)
     {
@@ -85,6 +86,14 @@ class AdministratorUiEconsentIpService
             'signature_upload_ip' => '203.0.113.25',
             'econsent_submission_ip' => '203.0.113.26'
         );
+    }
+
+    public function dataEntrySignatureIp($binding, $revealIps)
+    {
+        $this->dataEntryRevealArguments[] = $revealIps;
+        return $revealIps
+            ? array('status' => 'captured', 'signature_upload_ip' => '203.0.113.27')
+            : array('status' => 'captured');
     }
 }
 
@@ -233,6 +242,30 @@ adminUiAssert(
         && ($revealed['details']['econsent_submission_ip'] ?? null) === '203.0.113.26'
         && $revealed['can_reveal_econsent_ips'] === true,
     'Administrator details did not reveal IP addresses after Database Query Tool access was confirmed.'
+);
+$service->result['binding']['capture_origin'] = 'data_entry';
+$service->result['binding']['econsent_survey_id'] = null;
+$service->result['binding']['econsent_ip_system_setting_enabled'] = null;
+$service->result['binding']['econsent_ip_capture_status'] = 'not_applicable';
+$service->result['binding']['econsent_signature_ip_ciphertext'] = null;
+$service->result['binding']['data_entry_signature_ip_capture_status'] = 'captured';
+$service->result['binding']['data_entry_signature_ip_ciphertext'] = 'EIP1.encrypted.data-entry';
+$dataEntryNoRevealService = new AdministratorUiEconsentIpService();
+$dataEntryNoReveal = (new AdministratorVerificationController($repository, $service, $dataEntryNoRevealService, false))
+    ->verify(substr($captureReference, 2));
+adminUiAssert(
+    $dataEntryNoRevealService->dataEntryRevealArguments === array()
+        && ($dataEntryNoReveal['details']['signature_upload_ip'] ?? null) === AdministratorVerificationController::DETAIL_CAPTURED_ENCRYPTED,
+    'Administrator data-entry diagnostics exposed an IP address without Database Query Tool access.'
+);
+$dataEntryRevealService = new AdministratorUiEconsentIpService();
+$dataEntryRevealed = (new AdministratorVerificationController($repository, $service, $dataEntryRevealService, true))
+    ->verify(substr($captureReference, 2));
+adminUiAssert(
+    $dataEntryRevealService->dataEntryRevealArguments === array(true)
+        && ($dataEntryRevealed['details']['signature_upload_ip'] ?? null) === '203.0.113.27'
+        && !isset($dataEntryRevealed['details']['econsent_submission_ip']),
+    'Administrator data-entry diagnostics did not reveal only the authorized upload IP.'
 );
 $byEdocId = $controller->verifyEdocId('1903');
 adminUiAssert($byEdocId['lookup_type'] === 'edoc_id' && $byEdocId['lookup_value'] === 1903, 'Administrator edoc lookup was not identified as an edoc lookup.');

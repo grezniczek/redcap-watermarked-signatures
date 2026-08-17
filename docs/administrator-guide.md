@@ -89,6 +89,14 @@ uncaptured and unreadable values are identified without exposing an address.
 In every module-log and project diagnostic view, the retained address remains
 encrypted or is omitted.
 
+For every signature uploaded from a data-entry form, the module attempts to
+capture the client IP independently of the e-Consent setting and retains an
+available address as encrypted, binding-authenticated provenance. It has no
+stored e-Consent PDF address to compare. The **Signature-upload IP** detail is
+therefore available only to a viewer who can access the enabled Database Query
+Tool; other Control Center users see **Captured (encrypted)** when an address
+was captured, or a non-sensitive not-captured state otherwise.
+
 ## Triage verification results
 
 | Result | Administrator response |

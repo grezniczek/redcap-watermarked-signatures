@@ -82,6 +82,9 @@ REDCap system setting for e-Consent IP capture was off at upload time or the
 needed IP data is unavailable.
 
 Project users never see either IP address, including in a mismatch result.
+For signatures uploaded from a data-entry form, the module separately attempts
+to retain the upload-time client IP as encrypted provenance. It is not shown on
+this page and has no e-Consent PDF address to compare.
 
 ## If the signature cannot be securely watermarked
 

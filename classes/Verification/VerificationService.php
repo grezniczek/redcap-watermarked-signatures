@@ -45,12 +45,14 @@ class VerificationService
 		'watermark_version'
 	);
 
-	/** @var array<int, string> Upload fields added to immutable bindings in format v3. */
+	/** @var array<int, string> IP-capture fields added to immutable bindings in format v3. */
 	private static $econsentIpBindingFields = array(
 		'econsent_survey_id',
 		'econsent_ip_system_setting_enabled',
 		'econsent_ip_capture_status',
-		'econsent_signature_ip_ciphertext'
+		'econsent_signature_ip_ciphertext',
+		'data_entry_signature_ip_capture_status',
+		'data_entry_signature_ip_ciphertext'
 	);
 
 	/**
