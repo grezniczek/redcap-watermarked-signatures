@@ -47,6 +47,11 @@ $econsentIpCaptureStatusLabels = array(
 	'not_captured_system_disabled' => $module->framework->tt('ui_econsent_ip_capture_system_disabled'), // Not captured: system setting disabled
 	'not_captured_client_ip_unavailable' => $module->framework->tt('ui_econsent_ip_capture_client_unavailable') // Not captured: client IP unavailable
 );
+$econsentIpDetailValueLabels = array(
+	\DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController::DETAIL_CAPTURED_ENCRYPTED => $module->framework->tt('ui_econsent_ip_capture_captured'), // Captured (encrypted)
+	\DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController::DETAIL_NOT_CAPTURED => $module->framework->tt('ui_econsent_ip_value_not_captured'), // Not captured
+	\DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController::DETAIL_NOT_AVAILABLE => $module->framework->tt('ui_econsent_ip_value_not_available') // Not available
+);
 
 $statusPresentation = array(
     'valid_current' => array(
@@ -292,22 +297,28 @@ $diagnosticSummaryLabels = array(
                             <?php if (!array_key_exists($key, $result['details'])) continue; ?>
                             <?php $value = $result['details'][$key]; ?>
                             <?php
-                            $displayValue = in_array($key, array('background_image_mode', 'background_image_effective_mode'), true)
+                            $displayValue = $value;
+                            if (
+                                in_array($key, array('background_image_mode', 'background_image_effective_mode'), true)
                                 && is_string($value)
                                 && array_key_exists($value, $backgroundImageModeLabels)
-                                ? $backgroundImageModeLabels[$value]
-                                : (
-                                    $key === 'econsent_ip_system_setting_enabled'
-                                    && is_bool($value)
-                                    ? $econsentIpSystemSettingLabels[$value]
-                                    : (
-                                        $key === 'econsent_ip_capture_status'
-                                        && is_string($value)
-                                        && array_key_exists($value, $econsentIpCaptureStatusLabels)
-                                        ? $econsentIpCaptureStatusLabels[$value]
-                                        : $value
-                                    )
-                                );
+                            ) {
+                                $displayValue = $backgroundImageModeLabels[$value];
+                            } elseif ($key === 'econsent_ip_system_setting_enabled' && is_bool($value)) {
+                                $displayValue = $econsentIpSystemSettingLabels[$value];
+                            } elseif (
+                                $key === 'econsent_ip_capture_status'
+                                && is_string($value)
+                                && array_key_exists($value, $econsentIpCaptureStatusLabels)
+                            ) {
+                                $displayValue = $econsentIpCaptureStatusLabels[$value];
+                            } elseif (
+                                in_array($key, array('signature_upload_ip', 'econsent_submission_ip'), true)
+                                && is_string($value)
+                                && array_key_exists($value, $econsentIpDetailValueLabels)
+                            ) {
+                                $displayValue = $econsentIpDetailValueLabels[$value];
+                            }
                             ?>
                             <tr>
                                 <th class="ps-3"><?= $escape($label) ?></th>

@@ -195,6 +195,7 @@ $service->result['checks']['binding_econsent_ip_mac'] = true;
 $service->result['binding']['v'] = 3;
 $service->result['binding']['econsent_survey_id'] = 715;
 $service->result['binding']['econsent_ip_system_setting_enabled'] = true;
+$service->result['binding']['econsent_ip_capture_status'] = 'captured';
 $noRevealIpService = new AdministratorUiEconsentIpService();
 $noRevealController = new AdministratorVerificationController($repository, $service, $noRevealIpService, false);
 $noReveal = $noRevealController->verify(substr($captureReference, 2));
@@ -204,8 +205,8 @@ adminUiAssert(
         && !isset($noReveal['econsent_ip_diagnostic']['signature_upload_ip'])
         && !isset($noReveal['econsent_ip_diagnostic']['econsent_submission_ip'])
         && ($noReveal['details']['econsent_ip_system_setting_enabled'] ?? null) === true
-        && !isset($noReveal['details']['signature_upload_ip'])
-        && !isset($noReveal['details']['econsent_submission_ip'])
+        && ($noReveal['details']['signature_upload_ip'] ?? null) === AdministratorVerificationController::DETAIL_CAPTURED_ENCRYPTED
+        && ($noReveal['details']['econsent_submission_ip'] ?? null) === AdministratorVerificationController::DETAIL_CAPTURED_ENCRYPTED
         && $noReveal['can_reveal_econsent_ips'] === false,
     'Administrator diagnostics exposed IP addresses without Database Query Tool access.'
 );
@@ -215,8 +216,8 @@ $disabledDqtController = new AdministratorVerificationController($repository, $s
 $disabledDqt = $disabledDqtController->verify(substr($captureReference, 2));
 adminUiAssert(
     $disabledDqtIpService->revealArguments === array(false)
-        && !isset($disabledDqt['details']['signature_upload_ip'])
-        && !isset($disabledDqt['details']['econsent_submission_ip'])
+        && ($disabledDqt['details']['signature_upload_ip'] ?? null) === AdministratorVerificationController::DETAIL_CAPTURED_ENCRYPTED
+        && ($disabledDqt['details']['econsent_submission_ip'] ?? null) === AdministratorVerificationController::DETAIL_CAPTURED_ENCRYPTED
         && $disabledDqt['can_reveal_econsent_ips'] === false,
     'Administrator diagnostics exposed IP addresses while the Database Query Tool was disabled.'
 );
