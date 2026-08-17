@@ -81,7 +81,10 @@ $verificationPage = array(
         'background_image_mode' => $module->framework->tt('ui_label_background_image_mode'), // Selected background image
         'background_image_effective_mode' => $module->framework->tt('ui_label_background_image_effective_mode'), // Applied background image
         'background_image_sha256' => $module->framework->tt('ui_label_background_image_sha256'), // Custom background image SHA-256
-        'background_image_rotation' => $module->framework->tt('ui_label_background_image_rotation') // Applied background image rotation
+        'background_image_rotation' => $module->framework->tt('ui_label_background_image_rotation'), // Applied background image rotation
+        'econsent_survey_id' => $module->framework->tt('ui_label_econsent_survey_id'), // e-Consent survey ID
+        'econsent_ip_system_setting_enabled' => $module->framework->tt('ui_label_econsent_ip_system_setting_enabled'), // e-Consent IP capture enabled at signature upload
+        'econsent_ip_capture_status' => $module->framework->tt('ui_label_econsent_ip_capture_status') // e-Consent IP capture status
     )
 );
 

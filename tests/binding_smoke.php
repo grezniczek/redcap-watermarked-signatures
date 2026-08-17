@@ -247,6 +247,30 @@ $tamperedV2FieldReference['field_reference'] = 'WITHDRAWN';
 bindingAssert($v2Mac->verify($tamperedV2FieldReference), 'Changing only a format-v2 extension unexpectedly changed the base MAC.');
 bindingAssert(!$v2Mac->verifyExtension($tamperedV2FieldReference), 'Extension MAC did not detect a changed field reference.');
 
+// Format v3 adds encrypted e-Consent-IP capture context under a third,
+// independently derived MAC while preserving the prior base and field-
+// reference extension formats for compatibility.
+$v3Mac = new BindingMac(str_repeat('b', 32), str_repeat('c', 32), str_repeat('d', 32));
+$v3Binding = $binding;
+$v3Binding['v'] = 3;
+$v3Binding['field_reference'] = 'CONSENT';
+$v3Binding['econsent_survey_id'] = 715;
+$v3Binding['econsent_ip_system_setting_enabled'] = true;
+$v3Binding['econsent_ip_capture_status'] = 'captured';
+$v3Binding['econsent_signature_ip_ciphertext'] = 'EIP1.MTIzNDU2Nzg5MDEy.MTIzNDU2Nzg5MDEyMzQ1Ng.c2lnbmF0dXJlLWlw';
+$v3Binding['binding_mac'] = $v3Mac->create($v3Binding);
+$v3Binding['binding_extension_mac'] = $v3Mac->createExtension($v3Binding);
+$v3Binding['binding_econsent_ip_mac'] = $v3Mac->createEconsentIpExtension($v3Binding);
+bindingAssert($v3Mac->verify($v3Binding), 'Format-v3 binding base MAC verification failed.');
+bindingAssert($v3Mac->verifyExtension($v3Binding), 'Format-v3 field-reference extension MAC verification failed.');
+bindingAssert($v3Mac->verifyEconsentIpExtension($v3Binding), 'Format-v3 e-Consent-IP MAC verification failed.');
+bindingAssert($v102Verifier->verify($v3Binding), 'A v1.0.2-compatible base verifier rejected a format-v3 binding.');
+$tamperedV3Ip = $v3Binding;
+$tamperedV3Ip['econsent_signature_ip_ciphertext'] = 'EIP1.MTIzNDU2Nzg5MDEy.MTIzNDU2Nzg5MDEyMzQ1Ng.dGFtcGVyZWQ';
+bindingAssert($v3Mac->verify($tamperedV3Ip), 'Changing only v3 IP context unexpectedly changed the base MAC.');
+bindingAssert($v3Mac->verifyExtension($tamperedV3Ip), 'Changing only v3 IP context unexpectedly changed the field-reference extension MAC.');
+bindingAssert(!$v3Mac->verifyEconsentIpExtension($tamperedV3Ip), 'e-Consent-IP MAC did not detect a changed ciphertext.');
+
 // Accept the short-lived development format that included field_reference in
 // the v1 base-MAC payload before the released v2 extension format existed.
 $preReleaseBinding = $binding;
@@ -315,6 +339,23 @@ bindingAssert($v2Repository->bindOnce($conflictingV2FieldReference) === LogRepos
 $storedV2Binding['binding_extension_mac'] = str_repeat('x', 43);
 $v2Module->events[0]['payload_json'] = json_encode($storedV2Binding);
 bindingAssert($v2Repository->bindOnce($v2Binding) === LogRepository::RESULT_INVALID_EXISTING_MAC, 'Invalid existing extension MAC was not detected.');
+
+$v3Module = new BindingTestModule();
+$GLOBALS['bindingPrimaryModule'] = $v3Module;
+$v3Repository = new LogRepository($v3Module, $v3Mac);
+bindingAssert($v3Repository->bindOnce($v3Binding) === LogRepository::RESULT_BOUND, 'Format-v3 binding was not appended.');
+$storedV3Binding = json_decode($v3Module->events[0]['payload_json'], true);
+bindingAssert(isset($storedV3Binding['binding_econsent_ip_mac']), 'Format-v3 binding did not store its e-Consent-IP MAC.');
+bindingAssert($v3Mac->verifyEconsentIpExtension($storedV3Binding), 'Stored format-v3 e-Consent-IP MAC did not verify.');
+bindingAssert(
+    strpos($v3Module->events[0]['payload_json'], '203.0.113.25') === false
+        && !in_array($v3Binding['econsent_signature_ip_ciphertext'], $v3Module->events[0]['parameters'], true),
+    'Format-v3 binding exposed e-Consent IP evidence outside its encrypted payload.'
+);
+$tamperedStoredV3Binding = $storedV3Binding;
+$tamperedStoredV3Binding['binding_econsent_ip_mac'] = str_repeat('x', 43);
+$v3Module->events[0]['payload_json'] = json_encode($tamperedStoredV3Binding);
+bindingAssert($v3Repository->bindOnce($v3Binding) === LogRepository::RESULT_INVALID_EXISTING_MAC, 'Invalid existing e-Consent-IP MAC was not detected.');
 
 $nonceModule = new BindingTestModule();
 $GLOBALS['bindingPrimaryModule'] = $nonceModule;

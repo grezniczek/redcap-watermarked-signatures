@@ -259,10 +259,23 @@ function verificationBinding($upload, BindingMac $mac)
     if (array_key_exists('field_reference', $upload)) {
         $binding['field_reference'] = $upload['field_reference'];
     }
+	foreach (array(
+		'econsent_survey_id',
+		'econsent_ip_system_setting_enabled',
+		'econsent_ip_capture_status',
+		'econsent_signature_ip_ciphertext'
+	) as $field) {
+		if (array_key_exists($field, $upload)) {
+			$binding[$field] = $upload[$field];
+		}
+	}
     $binding['binding_mac'] = $mac->create($binding);
     if ((int) $binding['v'] >= 2) {
         $binding['binding_extension_mac'] = $mac->createExtension($binding);
     }
+	if ((int) $binding['v'] >= 3) {
+		$binding['binding_econsent_ip_mac'] = $mac->createEconsentIpExtension($binding);
+	}
     return $binding;
 }
 
@@ -275,7 +288,8 @@ function verificationHarness($upload, $binding, $bytes)
     }
     $mac = new BindingMac(
         KeyDerivation::derive(KeyDerivation::BINDING_INFO),
-        KeyDerivation::derive(KeyDerivation::BINDING_EXTENSION_INFO)
+		KeyDerivation::derive(KeyDerivation::BINDING_EXTENSION_INFO),
+		KeyDerivation::derive(KeyDerivation::ECONSENT_IP_BINDING_INFO)
     );
     $edocs = new VerificationEdocReader();
     $edocs->files[$upload['edoc_id']] = array(
@@ -295,7 +309,8 @@ $GLOBALS['salt'] = 'redcap-test-installation-salt';
 $GLOBALS['salt2'] = 'redcap-test-installation-salt-2';
 $mac = new BindingMac(
     KeyDerivation::derive(KeyDerivation::BINDING_INFO),
-    KeyDerivation::derive(KeyDerivation::BINDING_EXTENSION_INFO)
+	KeyDerivation::derive(KeyDerivation::BINDING_EXTENSION_INFO),
+	KeyDerivation::derive(KeyDerivation::ECONSENT_IP_BINDING_INFO)
 );
 $bytes = 'final-watermarked-png-bytes';
 $captureReference = ReferenceGenerator::captureReference();
@@ -340,6 +355,33 @@ verificationAssert(
     && $tamperedV2Result['checks']['binding_extension_mac'] === false
     && in_array('binding_extension_mac_mismatch', $tamperedV2Result['issues'], true),
     'Changed format-v2 field reference did not fail its extension MAC.'
+);
+
+$v3Reference = ReferenceGenerator::captureReference();
+$v3Upload = verificationUpload($v3Reference, 98144, $bytes);
+$v3Upload['v'] = 3;
+$v3Upload['field_reference'] = 'CONSENT';
+$v3Upload['econsent_survey_id'] = 715;
+$v3Upload['econsent_ip_system_setting_enabled'] = true;
+$v3Upload['econsent_ip_capture_status'] = 'captured';
+$v3Upload['econsent_signature_ip_ciphertext'] = 'EIP1.MTIzNDU2Nzg5MDEy.MTIzNDU2Nzg5MDEyMzQ1Ng.c2lnbmF0dXJlLWlw';
+$v3Binding = verificationBinding($v3Upload, $mac);
+list($v3Service) = verificationHarness($v3Upload, $v3Binding, $bytes);
+$v3Result = $v3Service->verify($v3Reference, 123);
+verificationAssert($v3Result['status'] === 'valid_current', 'Valid format-v3 signature did not verify.');
+verificationAssert($v3Result['checks']['binding_econsent_ip_mac'] === true, 'Format-v3 e-Consent-IP MAC was not verified.');
+verificationAssert($v102CompatibleMac->verify($v3Binding), 'A v1.0.2-compatible base verifier rejected a format-v3 binding.');
+$tamperedV3Binding = $v3Binding;
+$tamperedV3Binding['econsent_ip_capture_status'] = 'not_captured_system_disabled';
+list($tamperedV3Service) = verificationHarness($v3Upload, $tamperedV3Binding, $bytes);
+$tamperedV3Result = $tamperedV3Service->verify($v3Reference, 123);
+verificationAssert(
+	$tamperedV3Result['status'] === 'invalid'
+	&& $tamperedV3Result['checks']['binding_mac'] === true
+	&& $tamperedV3Result['checks']['binding_extension_mac'] === true
+	&& $tamperedV3Result['checks']['binding_econsent_ip_mac'] === false
+	&& in_array('binding_econsent_ip_mac_mismatch', $tamperedV3Result['issues'], true),
+	'Changed format-v3 e-Consent IP context did not fail its dedicated MAC.'
 );
 
 $renamedReference = ReferenceGenerator::captureReference();

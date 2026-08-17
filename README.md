@@ -120,6 +120,27 @@ bound. When a saved signature is later replaced or cleared, its original
 binding remains valid history and verification can show it as a valid
 historical signature.
 
+### e-Consent IP comparison
+
+For a signature captured on a participant-facing survey with e-Consent enabled,
+the module records whether REDCap's system-level _IP Address Capture_ setting 
+was enabled at upload time. When it was enabled and REDCap provides a client IP
+address, the module encrypts that address before writing it to the upload 
+provenance and carries the same encrypted value into the final binding. The 
+address is authenticated to the signature's project, event, instrument, field, 
+and capture reference; it is never written as a plaintext module-log parameter. Data-entry captures and ordinary surveys are explicitly not part of this 
+comparison.
+
+Verification treats this as a diagnostic, not an integrity check. For an
+applicable, completed e-Consent survey, it compares the encrypted upload-time
+address with REDCap's IP in the stored e-Consent PDF archive. A mismatch is a
+warning that requires context (for example, a prolonged session or a changed
+network); it does not make the signature invalid. If system IP capture was off
+at upload time, or either value is unavailable, the result is **not tested**.
+Project verification never shows either address. Administrator verification can
+show them only to a REDCap superuser while the Control Center Database Query
+Tool is enabled.
+
 ## Verify a signature
 
 Verification checks the **stored REDCap edoc**, not a separately uploaded copy
@@ -146,6 +167,7 @@ The result includes these checks when they can be performed:
 |---|---|
 | **Binding MAC** | The saved binding record has not been altered. |
 | **Binding extension MAC** | For format-v2 signatures, the optional field-specific `REF:` mark has not been altered. |
+| **e-Consent IP binding MAC** | For format-v3 signatures, the encrypted e-Consent-IP capture context has not been altered. |
 | **Upload/binding relationship** | The binding matches the captured signature provenance. |
 | **Stable-scope anchor** | The watermark scope is consistent with the project, event, instrument, and field. |
 | **Edoc exists** | The saved REDCap file is still available. |
@@ -164,7 +186,9 @@ module and accepts either:
 Enter one lookup value at a time. The administrator page also shows authorized
 technical log history, including relevant binding, rename, and error events.
 It does not expose signature bytes, signed-envelope values, or binding MAC
-values.
+values. For e-Consent IP diagnostics, plaintext addresses are additionally
+gated by the enabled Database Query Tool; the encrypted module-log payload
+remains restorable for authorized forensic review.
 
 ### Understand the result
 
@@ -224,6 +248,9 @@ field clear; a failed result should be treated as an integrity issue.
   watermarked edoc through its normal file workflow.
 - The verification pages do not return file bytes. They verify the stored file
   and show authorized metadata only.
+- For e-Consent surveys, any upload-time IP retained by the module is encrypted
+  in module-log payloads. Project diagnostics never disclose it; administrator
+  disclosure requires both superuser access and an enabled Database Query Tool.
 - Successful bindings, record-rename history, and serious errors are retained.
   Only unbound upload provenance is eligible for scheduled cleanup.
 

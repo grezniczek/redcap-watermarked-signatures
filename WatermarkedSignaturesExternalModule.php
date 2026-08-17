@@ -10,9 +10,11 @@ use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\Anchor;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\BindingMac;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\CanonicalJson;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\EnvelopeSigner;
+use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\IpCipher;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\KeyDerivation;
 use DE\RUB\WatermarkedSignaturesExternalModule\Crypto\ReferenceGenerator;
 use DE\RUB\WatermarkedSignaturesExternalModule\Context\SavedContext;
+use DE\RUB\WatermarkedSignaturesExternalModule\Econsent\IpService;
 use DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository;
 use DE\RUB\WatermarkedSignaturesExternalModule\Watermark\Renderer;
 use DE\RUB\WatermarkedSignaturesExternalModule\Verification\AdministratorVerificationController;
@@ -32,7 +34,9 @@ require_once "classes/Crypto/EnvelopeSigner.php";
 require_once "classes/Crypto/ReferenceGenerator.php";
 require_once "classes/Crypto/Anchor.php";
 require_once "classes/Crypto/BindingMac.php";
+require_once "classes/Crypto/IpCipher.php";
 require_once "classes/Context/SavedContext.php";
+require_once "classes/Econsent/IpService.php";
 require_once "classes/Storage/LogRepository.php";
 require_once "classes/Watermark/Renderer.php";
 require_once "classes/Verification/AdministratorVerificationController.php";
@@ -60,7 +64,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	const ENVELOPE_VERSION = 1;
 	// Version of the matched upload/binding provenance pair. This is distinct
 	// from the visible WM1 watermark and signed-envelope format versions.
-	const BINDING_PROVENANCE_VERSION = 2;
+	const BINDING_PROVENANCE_VERSION = 3;
 	const ENVELOPE_TTL_SECONDS = 14400;
 	const ENVELOPE_MAX_TTL_SECONDS = 28800;
 	const CLOCK_SKEW_SECONDS = 300;
@@ -544,7 +548,14 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			new RedcapEdocReader(),
 			new RedcapCurrentValueReader()
 		);
-		return new ProjectVerificationController($projectId, $repository, $bindingMac, $service, $policy);
+		return new ProjectVerificationController(
+			$projectId,
+			$repository,
+			$bindingMac,
+			$service,
+			$policy,
+			$this->econsent_ip_service()
+		);
 	}
 
 	/**
@@ -564,7 +575,12 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			new RedcapEdocReader(),
 			new RedcapCurrentValueReader()
 		);
-		return new AdministratorVerificationController($repository, $service);
+		return new AdministratorVerificationController(
+			$repository,
+			$service,
+			$this->econsent_ip_service(),
+			$this->can_reveal_econsent_ips_in_administrator_diagnostics()
+		);
 	}
 
     #endregion
@@ -583,8 +599,36 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	{
 		return new BindingMac(
 			KeyDerivation::derive(KeyDerivation::BINDING_INFO),
-			KeyDerivation::derive(KeyDerivation::BINDING_EXTENSION_INFO)
+			KeyDerivation::derive(KeyDerivation::BINDING_EXTENSION_INFO),
+			KeyDerivation::derive(KeyDerivation::ECONSENT_IP_BINDING_INFO)
 		);
+	}
+
+	/** @return IpService */
+	private function econsent_ip_service()
+	{
+		return new IpService(new IpCipher(
+			KeyDerivation::derive(KeyDerivation::ECONSENT_IP_ENCRYPTION_INFO)
+		));
+	}
+
+	/**
+	 * IP addresses are sensitive data. The Control Center Database Query Tool
+	 * uses these same two conditions for access, so only an administrator who
+	 * can use it may have plaintext values shown in this diagnostic UI.
+	 *
+	 * @return bool
+	 */
+	private function can_reveal_econsent_ips_in_administrator_diagnostics()
+	{
+		// The Database Query Tool itself checks SUPER_USER. Prefer that
+		// request-context authority when REDCap defined it, while retaining a
+		// framework-user fallback for non-page contexts and tests.
+		$isSuperUser = defined('SUPER_USER')
+			? (bool) SUPER_USER
+			: $this->getUser()->isSuperUser();
+		return $isSuperUser
+			&& (string) ($GLOBALS['database_query_tool_enabled'] ?? '') === '1';
 	}
 
 	/**
@@ -679,6 +723,16 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				if (array_key_exists('field_reference', $upload)) {
 					$binding['field_reference'] = $upload['field_reference'];
 				}
+				if ((int) ($upload['v'] ?? 1) >= 3) {
+					foreach (array(
+						'econsent_survey_id',
+						'econsent_ip_system_setting_enabled',
+						'econsent_ip_capture_status',
+						'econsent_signature_ip_ciphertext'
+					) as $econsentField) {
+						$binding[$econsentField] = $upload[$econsentField];
+					}
+				}
 				$repository->bindOnce($binding);
 			} catch (Throwable $exception) {
 				$this->log_binding_error(
@@ -737,6 +791,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			&& !$this->is_valid_field_reference($upload['field_reference'])
 		) {
 			throw new \UnexpectedValueException('Upload provenance contains an invalid field reference.');
+		}
+		if ((int) ($upload['v'] ?? 1) >= 3 && !IpService::isValidCaptureContext($upload)) {
+			throw new \UnexpectedValueException('Upload provenance contains invalid e-Consent IP capture context.');
 		}
 		if (
 			array_key_exists("background_image_mode", $upload)
@@ -1159,6 +1216,15 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		$anchor = Anchor::create($scope, KeyDerivation::derive(KeyDerivation::ANCHOR_INFO));
 		$captureReference = ReferenceGenerator::captureReference();
 		$capturedAt = gmdate("Y-m-d\TH:i:s\Z");
+		$econsentIpContext = $this->econsent_ip_service()->capture(
+			$this->proj,
+			$payload['pid'],
+			$payload['event_id'],
+			$payload['instrument'],
+			$payload['field'],
+			$payload['capture_origin'],
+			$captureReference
+		);
 
 		try {
 			$backgroundImage = $this->background_image_profile();
@@ -1207,6 +1273,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			"background_image_sha256" => $backgroundImage["sha256"],
 			"background_image_rotation" => $backgroundImage["rotation"]
 		);
+		$provenance = array_merge($provenance, $econsentIpContext);
 
 		$this->capture_edoc_id_from_response($field, $provenance);
 	}

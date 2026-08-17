@@ -324,17 +324,23 @@ class LogRepository
 				if ($this->requiresBindingExtension($event)) {
 					$event['binding_extension_mac'] = $this->bindingMac->createExtension($event);
 				}
+				if ($this->requiresEconsentIpExtension($event)) {
+					$event['binding_econsent_ip_mac'] = $this->bindingMac->createEconsentIpExtension($event);
+				}
 				$this->appendBinding($event);
 				return self::RESULT_BOUND;
 			}
 
-			if (!$this->bindingMac->verify($existing) || !$this->bindingExtensionIsValid($existing)) {
+			if (!$this->bindingMac->verify($existing)
+				|| !$this->bindingExtensionIsValid($existing)
+				|| !$this->econsentIpExtensionIsValid($existing)) {
 				$this->appendBindingMacError($existing, $binding);
 				return self::RESULT_INVALID_EXISTING_MAC;
 			}
 
 			if ($this->bindingMac->equals($existing, $binding)
-				&& $this->bindingMac->extensionValuesEqual($existing, $binding)) {
+				&& $this->bindingMac->extensionValuesEqual($existing, $binding)
+				&& $this->bindingMac->econsentIpValuesEqual($existing, $binding)) {
 				return self::RESULT_IDEMPOTENT;
 			}
 
@@ -449,6 +455,7 @@ class LogRepository
 			'edoc_id' => $event['edoc_id'],
 			'binding_mac' => $event['binding_mac'],
 			'binding_extension_mac' => $event['binding_extension_mac'] ?? null,
+			'binding_econsent_ip_mac' => $event['binding_econsent_ip_mac'] ?? null,
 			'bound_at' => $event['bound_at'],
 			'payload_json' => CanonicalJson::encode($event)
 		));
@@ -470,6 +477,25 @@ class LogRepository
 	private function bindingExtensionIsValid($binding)
 	{
 		return !$this->requiresBindingExtension($binding) || $this->bindingMac->verifyExtension($binding);
+	}
+
+	/**
+	 * @param array<string, mixed> $binding
+	 * @return bool Whether this binding format requires the e-Consent-IP MAC.
+	 */
+	private function requiresEconsentIpExtension($binding)
+	{
+		return $this->bindingMac->requiresEconsentIpExtension($binding);
+	}
+
+	/**
+	 * @param array<string, mixed> $binding
+	 * @return bool Whether a required e-Consent-IP MAC is valid.
+	 */
+	private function econsentIpExtensionIsValid($binding)
+	{
+		return !$this->requiresEconsentIpExtension($binding)
+			|| $this->bindingMac->verifyEconsentIpExtension($binding);
 	}
 
 	/**

@@ -8,6 +8,8 @@ class KeyDerivation
 	const ANCHOR_INFO = 'sigwm/anchor/v1';
 	const BINDING_INFO = 'sigwm/binding/v1';
 	const BINDING_EXTENSION_INFO = 'sigwm/binding-extension/v1';
+	const ECONSENT_IP_ENCRYPTION_INFO = 'sigwm/econsent-ip-encryption/v1';
+	const ECONSENT_IP_BINDING_INFO = 'sigwm/econsent-ip-binding/v1';
 	const REFERENCES_INFO = 'sigwm/references/v1';
 
 	/**

@@ -27,6 +27,9 @@ class ProjectVerificationController
 	/** @var ProjectAccessPolicy */
 	private $accessPolicy;
 
+	/** @var object|null */
+	private $econsentIpService;
+
 	/**
 	 * @param int $projectId
 	 * @param LogRepository $repository
@@ -35,13 +38,17 @@ class ProjectVerificationController
 	 * @param ProjectAccessPolicy $accessPolicy
 	 * @return void
 	 */
-	public function __construct($projectId, $repository, $bindingMac, $service, ProjectAccessPolicy $accessPolicy)
+	public function __construct($projectId, $repository, $bindingMac, $service, ProjectAccessPolicy $accessPolicy, $econsentIpService = null)
 	{
 		$this->projectId = (int) $projectId;
 		$this->repository = $repository;
 		$this->bindingMac = $bindingMac;
 		$this->service = $service;
 		$this->accessPolicy = $accessPolicy;
+		if ($econsentIpService !== null && (!is_object($econsentIpService) || !method_exists($econsentIpService, 'compare'))) {
+			throw new \InvalidArgumentException('The e-Consent IP service must provide compare().');
+		}
+		$this->econsentIpService = $econsentIpService;
 	}
 
 	/**
@@ -110,6 +117,7 @@ class ProjectVerificationController
 	 */
 	private function present($result)
 	{
+		$result = $this->withEconsentIpDiagnostic($result);
 		$upload = isset($result['upload']) && is_array($result['upload']) ? $result['upload'] : array();
 		$binding = isset($result['binding']) && is_array($result['binding']) ? $result['binding'] : array();
 		$details = array();
@@ -137,9 +145,53 @@ class ProjectVerificationController
 			'checks' => isset($result['checks']) && is_array($result['checks']) ? $result['checks'] : array(),
 			'issues' => isset($result['issues']) && is_array($result['issues']) ? $result['issues'] : array(),
 			'edoc' => isset($result['edoc']) && is_array($result['edoc']) ? $result['edoc'] : null,
+			'econsent_ip_diagnostic' => isset($result['econsent_ip_diagnostic']) && is_array($result['econsent_ip_diagnostic'])
+				? $result['econsent_ip_diagnostic']
+				: null,
+			'can_reveal_econsent_ips' => false,
 			'details' => $details,
 			'field_url' => RedcapFieldLink::create($binding, $result['current_record_id'] ?? null)
 		);
+	}
+
+	/**
+	 * e-Consent IP comparison is intentionally diagnostic only. It never adds
+	 * an integrity issue or changes the verified-signature status, and the
+	 * project presenter never asks the service to return plaintext addresses.
+	 *
+	 * @param array<string, mixed> $result
+	 * @return array<string, mixed>
+	 */
+	private function withEconsentIpDiagnostic($result)
+	{
+		if ($this->econsentIpService === null || !is_array($result)) {
+			return $result;
+		}
+		$binding = isset($result['binding']) && is_array($result['binding']) ? $result['binding'] : null;
+		$checks = isset($result['checks']) && is_array($result['checks']) ? $result['checks'] : array();
+		if ($binding === null || ($checks['binding_mac'] ?? null) !== true) {
+			return $result;
+		}
+		if ((int) ($binding['v'] ?? 0) >= 3 && ($checks['binding_econsent_ip_mac'] ?? null) !== true) {
+			return $result;
+		}
+		try {
+			$diagnostic = $this->econsentIpService->compare(
+				$binding,
+				$result['current_record_id'] ?? null,
+				false
+			);
+			if (is_array($diagnostic) && ($diagnostic['status'] ?? null) !== 'not_applicable') {
+				// Keep this guarantee at the presentation boundary too, rather
+				// than relying only on IpService's $revealIps argument.
+				unset($diagnostic['signature_upload_ip'], $diagnostic['econsent_submission_ip']);
+				$result['econsent_ip_diagnostic'] = $diagnostic;
+			}
+		} catch (Throwable $exception) {
+			// A missing e-Consent API or archive row is represented by the
+			// service as not-tested; diagnostics must never affect verification.
+		}
+		return $result;
 	}
 
 	/**
@@ -172,6 +224,8 @@ class ProjectVerificationController
 			'checks' => array(),
 			'issues' => array('not_available_in_authorized_scope'),
 			'edoc' => null,
+			'econsent_ip_diagnostic' => null,
+			'can_reveal_econsent_ips' => false,
 			'details' => array(),
 			'field_url' => null
 		);
@@ -193,6 +247,8 @@ class ProjectVerificationController
 			'checks' => array(),
 			'issues' => array($issue),
 			'edoc' => null,
+			'econsent_ip_diagnostic' => null,
+			'can_reveal_econsent_ips' => false,
 			'details' => array(),
 			'field_url' => null
 		);

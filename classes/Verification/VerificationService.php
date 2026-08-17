@@ -45,6 +45,14 @@ class VerificationService
 		'watermark_version'
 	);
 
+	/** @var array<int, string> Upload fields added to immutable bindings in format v3. */
+	private static $econsentIpBindingFields = array(
+		'econsent_survey_id',
+		'econsent_ip_system_setting_enabled',
+		'econsent_ip_capture_status',
+		'econsent_signature_ip_ciphertext'
+	);
+
 	/**
 	 * @param LogRepository $repository
 	 * @param BindingMac $bindingMac
@@ -137,6 +145,16 @@ class VerificationService
 				$this->addIssue($result, 'binding_extension_mac_mismatch');
 			}
 		}
+		if ($this->bindingMac->requiresEconsentIpExtension($binding)) {
+			try {
+				$result['checks']['binding_econsent_ip_mac'] = $this->bindingMac->verifyEconsentIpExtension($binding);
+			} catch (Throwable $exception) {
+				$result['checks']['binding_econsent_ip_mac'] = false;
+			}
+			if (!$result['checks']['binding_econsent_ip_mac']) {
+				$this->addIssue($result, 'binding_econsent_ip_mac_mismatch');
+			}
+		}
 
 		$result['checks']['binding_upload'] = $this->bindingMatchesUpload($binding, $upload);
 		if (!$result['checks']['binding_upload']) {
@@ -151,6 +169,7 @@ class VerificationService
 
 		if ($result['checks']['binding_mac']
 			&& (($result['checks']['binding_extension_mac'] ?? true) === true)
+			&& (($result['checks']['binding_econsent_ip_mac'] ?? true) === true)
 			&& $result['checks']['binding_upload']
 			&& $result['checks']['anchor']) {
 			$this->checkCurrentField($result, $binding, $edocId);
@@ -177,6 +196,8 @@ class VerificationService
 			'edoc' => null,
 			'checks' => array(
 				'binding_mac' => null,
+				'binding_extension_mac' => null,
+				'binding_econsent_ip_mac' => null,
 				'binding_upload' => null,
 				'anchor' => null,
 				'edoc_exists' => null,
@@ -311,6 +332,7 @@ class VerificationService
 			'upload_project_mismatch',
 			'binding_mac_mismatch',
 			'binding_extension_mac_mismatch',
+			'binding_econsent_ip_mac_mismatch',
 			'binding_upload_mismatch',
 			'anchor_mismatch',
 			'file_digest_mismatch'
@@ -383,6 +405,16 @@ class VerificationService
 				|| $binding['field_reference'] !== $upload['field_reference']
 			) {
 				return false;
+			}
+		}
+		if ($this->bindingMac->requiresEconsentIpExtension($binding)
+			|| $this->bindingMac->requiresEconsentIpExtension($upload)) {
+			foreach (self::$econsentIpBindingFields as $field) {
+				if (!array_key_exists($field, $binding)
+					|| !array_key_exists($field, $upload)
+					|| $binding[$field] !== $upload[$field]) {
+					return false;
+				}
 			}
 		}
 		return true;

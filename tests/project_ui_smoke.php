@@ -95,6 +95,24 @@ class ProjectUiService
     }
 }
 
+class ProjectUiEconsentIpService
+{
+    public $revealArguments = array();
+
+    public function compare($binding, $recordId, $revealIps)
+    {
+        $this->revealArguments[] = $revealIps;
+        // Deliberately return values even when false: the project presenter
+        // must enforce the no-IP guarantee at its own boundary as well.
+        return array(
+            'status' => 'mismatch',
+            'warning' => true,
+            'signature_upload_ip' => '203.0.113.25',
+            'econsent_submission_ip' => '203.0.113.26'
+        );
+    }
+}
+
 function projectUiResult($captureReference)
 {
     return array(
@@ -217,6 +235,17 @@ projectUiAssert($presented['details']['anchor'] === 'A:AAAA-BBBB-CCCC-DDDD', 'Au
 projectUiAssert($presented['field_url'] === '/redcap/DataEntry/index.php?pid=123&id=R-002&event_id=417&page=consent&instance=1', 'Project verification did not create the data-entry field URL.');
 projectUiAssert(!isset($presented['upload']) && !isset($presented['binding']), 'Raw verification payload escaped the project presenter.');
 projectUiAssert(!isset($presented['details']['envelope_nonce']) && !isset($presented['details']['binding_mac']), 'Sensitive technical values escaped the allowlist.');
+$econsentIpService = new ProjectUiEconsentIpService();
+$econsentController = new ProjectVerificationController(123, $repository, $mac, $service, $allowedPolicy, $econsentIpService);
+$econsentPresented = $econsentController->verify($captureReference);
+projectUiAssert($econsentIpService->revealArguments === array(false), 'Project e-Consent IP diagnostic requested plaintext IP values.');
+projectUiAssert(
+    ($econsentPresented['econsent_ip_diagnostic']['status'] ?? null) === 'mismatch'
+        && !isset($econsentPresented['econsent_ip_diagnostic']['signature_upload_ip'])
+        && !isset($econsentPresented['econsent_ip_diagnostic']['econsent_submission_ip'])
+        && $econsentPresented['can_reveal_econsent_ips'] === false,
+    'Project e-Consent IP diagnostics exposed IP addresses.'
+);
 $printedReference = substr($captureReference, 2);
 $controller->verify($printedReference);
 projectUiAssert($service->lastReference === $captureReference, 'Printed capture reference was not normalized to the internal form.');

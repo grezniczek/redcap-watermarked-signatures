@@ -67,6 +67,22 @@ class AdministratorUiService
     }
 }
 
+class AdministratorUiEconsentIpService
+{
+    public $revealArguments = array();
+
+    public function compare($binding, $recordId, $revealIps)
+    {
+        $this->revealArguments[] = $revealIps;
+        return array(
+            'status' => 'mismatch',
+            'warning' => true,
+            'signature_upload_ip' => '203.0.113.25',
+            'econsent_submission_ip' => '203.0.113.26'
+        );
+    }
+}
+
 $captureReference = ReferenceGenerator::captureReference();
 $repository = new AdministratorUiRepository();
 $repository->diagnostics = array(array(
@@ -170,6 +186,27 @@ adminUiAssert(count($presented['diagnostics']) === 2, 'Administrator diagnostic 
 adminUiAssert($presented['diagnostics'][0]['message'] === 'sigwm_record_rename', 'Administrator history was not sorted with the newest event first.');
 adminUiAssert(!isset($presented['diagnostics'][1]['payload_json']) && !isset($presented['diagnostics'][1]['binding_mac']), 'Raw diagnostic payload values escaped administrator history.');
 adminUiAssert($presented['diagnostics'][0]['record'] === '12' && $presented['diagnostics'][0]['previous_record_id'] === '9', 'Administrator history did not preserve record-rename details.');
+$noRevealIpService = new AdministratorUiEconsentIpService();
+$noRevealController = new AdministratorVerificationController($repository, $service, $noRevealIpService, false);
+$noReveal = $noRevealController->verify(substr($captureReference, 2));
+adminUiAssert($noRevealIpService->revealArguments === array(false), 'Administrator without Database Query Tool access requested plaintext IP values.');
+adminUiAssert(
+    ($noReveal['econsent_ip_diagnostic']['status'] ?? null) === 'mismatch'
+        && !isset($noReveal['econsent_ip_diagnostic']['signature_upload_ip'])
+        && !isset($noReveal['econsent_ip_diagnostic']['econsent_submission_ip'])
+        && $noReveal['can_reveal_econsent_ips'] === false,
+    'Administrator diagnostics exposed IP addresses without Database Query Tool access.'
+);
+$revealIpService = new AdministratorUiEconsentIpService();
+$revealController = new AdministratorVerificationController($repository, $service, $revealIpService, true);
+$revealed = $revealController->verify(substr($captureReference, 2));
+adminUiAssert(
+    $revealIpService->revealArguments === array(true)
+        && ($revealed['econsent_ip_diagnostic']['signature_upload_ip'] ?? null) === '203.0.113.25'
+        && ($revealed['econsent_ip_diagnostic']['econsent_submission_ip'] ?? null) === '203.0.113.26'
+        && $revealed['can_reveal_econsent_ips'] === true,
+    'Administrator diagnostics did not reveal IP addresses after Database Query Tool access was confirmed.'
+);
 $byEdocId = $controller->verifyEdocId('1903');
 adminUiAssert($byEdocId['lookup_type'] === 'edoc_id' && $byEdocId['lookup_value'] === 1903, 'Administrator edoc lookup was not identified as an edoc lookup.');
 adminUiAssert($service->lastReference === $captureReference && $service->lastProjectId === null, 'Administrator edoc lookup was not verified globally.');

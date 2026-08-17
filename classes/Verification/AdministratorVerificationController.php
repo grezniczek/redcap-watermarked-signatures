@@ -16,12 +16,18 @@ class AdministratorVerificationController
 	/** @var VerificationService */
 	private $service;
 
+	/** @var object|null */
+	private $econsentIpService;
+
+	/** @var bool */
+	private $canRevealEconsentIps;
+
 	/**
 	 * @param \DE\RUB\WatermarkedSignaturesExternalModule\Storage\LogRepository $repository
 	 * @param VerificationService $service
 	 * @return void
 	 */
-	public function __construct($repository, $service)
+	public function __construct($repository, $service, $econsentIpService = null, $canRevealEconsentIps = false)
 	{
 		if (!is_object($repository)
 			|| !method_exists($repository, 'findDiagnosticEventsByEdocId')
@@ -31,8 +37,13 @@ class AdministratorVerificationController
 		if (!is_object($service) || !method_exists($service, 'verify')) {
 			throw new \InvalidArgumentException('The verification service must provide verify().');
 		}
+		if ($econsentIpService !== null && (!is_object($econsentIpService) || !method_exists($econsentIpService, 'compare'))) {
+			throw new \InvalidArgumentException('The e-Consent IP service must provide compare().');
+		}
 		$this->repository = $repository;
 		$this->service = $service;
+		$this->econsentIpService = $econsentIpService;
+		$this->canRevealEconsentIps = $canRevealEconsentIps === true;
 	}
 
 	/**
@@ -98,6 +109,7 @@ class AdministratorVerificationController
 	 */
 	private function present($result, $diagnostics, $lookupType, $lookupValue)
 	{
+		$result = $this->withEconsentIpDiagnostic($result);
 		$upload = isset($result['upload']) && is_array($result['upload']) ? $result['upload'] : array();
 		$binding = isset($result['binding']) && is_array($result['binding']) ? $result['binding'] : array();
 		$details = array();
@@ -112,7 +124,8 @@ class AdministratorVerificationController
 		$this->copy($details, $binding, array(
 			'event_id', 'instrument', 'field', 'repeat_type',
 			'repeat_instrument', 'repeat_instance', 'bound_at', 'save_origin',
-			'save_username'
+			'save_username', 'econsent_survey_id',
+			'econsent_ip_system_setting_enabled', 'econsent_ip_capture_status'
 		));
 		$details['record_id'] = $result['current_record_id'] ?? ($binding['record_id'] ?? null);
 		$this->copyMapped($details, $upload, array(
@@ -135,12 +148,51 @@ class AdministratorVerificationController
 			'checks' => isset($result['checks']) && is_array($result['checks']) ? $result['checks'] : array(),
 			'issues' => isset($result['issues']) && is_array($result['issues']) ? $result['issues'] : array(),
 			'edoc' => isset($result['edoc']) && is_array($result['edoc']) ? $result['edoc'] : null,
+			'econsent_ip_diagnostic' => isset($result['econsent_ip_diagnostic']) && is_array($result['econsent_ip_diagnostic'])
+				? $result['econsent_ip_diagnostic']
+				: null,
+			'can_reveal_econsent_ips' => $this->canRevealEconsentIps,
 			'details' => $details,
 			'field_url' => RedcapFieldLink::create($binding, $result['current_record_id'] ?? null),
 			'diagnostics' => $this->presentDiagnostics($diagnostics),
 			'lookup_type' => $lookupType,
 			'lookup_value' => $lookupValue
 		);
+	}
+
+	/**
+	 * @param array<string, mixed> $result
+	 * @return array<string, mixed>
+	 */
+	private function withEconsentIpDiagnostic($result)
+	{
+		if ($this->econsentIpService === null || !is_array($result)) {
+			return $result;
+		}
+		$binding = isset($result['binding']) && is_array($result['binding']) ? $result['binding'] : null;
+		$checks = isset($result['checks']) && is_array($result['checks']) ? $result['checks'] : array();
+		if ($binding === null || ($checks['binding_mac'] ?? null) !== true) {
+			return $result;
+		}
+		if ((int) ($binding['v'] ?? 0) >= 3 && ($checks['binding_econsent_ip_mac'] ?? null) !== true) {
+			return $result;
+		}
+		try {
+			$diagnostic = $this->econsentIpService->compare(
+				$binding,
+				$result['current_record_id'] ?? null,
+				$this->canRevealEconsentIps
+			);
+			if (is_array($diagnostic) && ($diagnostic['status'] ?? null) !== 'not_applicable') {
+				if (!$this->canRevealEconsentIps) {
+					unset($diagnostic['signature_upload_ip'], $diagnostic['econsent_submission_ip']);
+				}
+				$result['econsent_ip_diagnostic'] = $diagnostic;
+			}
+		} catch (Throwable $exception) {
+			// The e-Consent comparison is not a signature-integrity check.
+		}
+		return $result;
 	}
 
 	/**

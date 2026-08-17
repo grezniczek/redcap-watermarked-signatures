@@ -69,6 +69,22 @@ The result includes integrity checks, authorized metadata, and technical log
 history. It does not display image bytes, signed-envelope nonces, raw log
 payloads, or binding MAC values.
 
+### e-Consent IP diagnostic
+
+For a signature uploaded to an e-Consent-enabled survey, the module snapshots
+the system-level `pdf_econsent_system_ip` setting at upload time. When that
+setting is enabled, it encrypts the upload-time IP in the provenance payload
+and binds the ciphertext, capture status, and survey identity with a dedicated
+MAC. On verification, it compares the restored upload-time value with REDCap's
+IP in the matching stored e-Consent PDF archive row.
+
+Treat a mismatch as a forensic warning, not a signature-integrity failure. A
+comparison can be **not tested** because capture was disabled at the time, the
+upload-time IP was unavailable, or REDCap has no usable stored e-Consent IP.
+The Control Center page shows raw IP values only when the viewer is a superuser
+and the Database Query Tool is enabled. In every other module-log and project
+diagnostic view, the retained address remains encrypted or is omitted.
+
 ## Triage verification results
 
 | Result | Administrator response |
@@ -103,6 +119,10 @@ If either event appears, retain the capture reference, edoc ID when present,
 project, field, and time before investigating. Do not edit module log rows to
 make a result appear valid.
 
+An e-Consent-IP mismatch should be correlated with the REDCap survey audit
+trail and the timing of the signature upload and survey completion. Do not
+interpret it by itself as evidence that the signature or consent is invalid.
+
 ## Operational and privacy boundaries
 
 - Successful bindings, record-rename history, and serious error events are
@@ -111,6 +131,9 @@ make a result appear valid.
   printed on the image, so handle exported images according to local policy.
 - `TS:` is a server-generated image-capture timestamp, not proof of signer
   identity or a qualified signing time.
+- e-Consent upload IP evidence is encrypted in module-log payloads and is
+  restorable only by the module with the installation secret. Do not copy or
+  disclose it outside an approved forensic process.
 - This module is an audit aid and does not independently satisfy legal,
   institutional, or electronic-consent requirements.
 

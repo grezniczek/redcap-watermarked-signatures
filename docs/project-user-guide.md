@@ -71,6 +71,18 @@ with the field mark omitted.
 
 The page may show a link to the bound field when your rights permit it.
 
+### e-Consent IP diagnostic
+
+For a signature captured on an e-Consent-enabled survey, verification may also
+show an e-Consent IP diagnostic. It compares the IP address observed at
+signature upload with the IP REDCap stored for the completed e-Consent PDF.
+An **addresses do not match** result is a warning for follow-up, not a failed
+signature-integrity check. The comparison is shown as **not tested** when the
+REDCap system setting for e-Consent IP capture was off at upload time or the
+needed IP data is unavailable.
+
+Project users never see either IP address, including in a mismatch result.
+
 ## If the signature cannot be securely watermarked
 
 Refresh the form or survey page, then capture the signature again. The module
@@ -83,7 +95,10 @@ to work around the message by uploading the image to an ordinary file field.
 
 The watermark remains visible in exports and screenshots. Treat the capture
 reference and any visible `REF:` project or field reference according to the
-project's data-handling policy. The module verifies REDCap's stored file and
+project’s data-handling policy. The module verifies REDCap's stored file and
 does not return signature image bytes through the verification page.
+
+For applicable e-Consent signatures, the module retains the upload-time IP
+only as encrypted provenance. It is not shown on this project page.
 
 For the full module overview, see the [main documentation](../README.md).
