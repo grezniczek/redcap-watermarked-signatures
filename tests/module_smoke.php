@@ -929,6 +929,11 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     $surveyModule->redcap_survey_page(123, null, 'consent', 417, null, 'public-survey-hash', null, 1);
     $surveyHtml = ob_get_clean();
     $surveyConfig = injectedConfig($surveyHtml);
+    moduleAssert(
+        strpos($surveyHtml, '(function (window, $) {') !== false
+        && strpos($surveyHtml, 'src="/modules/watermarked_signatures/js/signature-watermark.js"') === false,
+        'Survey rendering did not inline the signature envelope helper.'
+    );
     $surveyEnvelope = $signer->verify($surveyConfig['envelopes']['participant_signature']);
     moduleAssert($surveyEnvelope['capture_origin'] === 'survey', 'Survey envelope did not identify its capture origin.');
     moduleAssert($surveyEnvelope['record_ref'] === null, 'First-page survey envelope assumed a record ID.');

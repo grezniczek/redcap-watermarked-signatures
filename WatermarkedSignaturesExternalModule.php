@@ -1150,7 +1150,14 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		);
 
 		echo "<script type=\"text/javascript\">window.REDCapSignatureWatermark={$config};</script>";
-		InjectionHelper::init($this)->js("js/signature-watermark.js");
+		// The configured public survey endpoint can be hosted separately from
+		// REDCap's normal webroot. Inline the small client-side helper there so
+		// a respondent does not need to fetch a module asset from that other
+		// endpoint before the signed envelope can accompany the upload.
+		InjectionHelper::init($this)->js(
+			"js/signature-watermark.js",
+			$captureOrigin === self::ORIGIN_SURVEY
+		);
 	}
 
 	/** @return void */
