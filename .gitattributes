@@ -3,7 +3,6 @@
 /.gitattributes export-ignore
 /.github/ export-ignore
 /.zenodo.json export-ignore
-/CITATION.cff export-ignore
 /DEV_DOCS/ export-ignore
 /SUPPORT.md export-ignore
 /support/ export-ignore
