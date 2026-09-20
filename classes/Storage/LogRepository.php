@@ -339,7 +339,7 @@ class LogRepository
 				return self::RESULT_INVALID_EXISTING_MAC;
 			}
 
-			if ($this->bindingMac->equals($existing, $binding)
+			if ($this->bindingIdentityMatchesCurrentRecord($existing, $binding)
 				&& $this->bindingMac->extensionValuesEqual($existing, $binding)
 				&& $this->bindingMac->econsentIpValuesEqual($existing, $binding)) {
 				return self::RESULT_IDEMPOTENT;
@@ -350,6 +350,36 @@ class LogRepository
 		} finally {
 			$this->queryPrimary('SELECT RELEASE_LOCK(?)', array($lockName));
 		}
+	}
+
+	/**
+	 * Compare an attempted save with an immutable binding while allowing only
+	 * REDCap's indexed current record ID to differ from the MAC-protected
+	 * binding-time record ID. Every other binding identity value must remain
+	 * identical, so assigning the edoc to another field, event, repeat context,
+	 * or project still produces a conflict.
+	 *
+	 * @param array<string, mixed> $existing Existing authenticated binding.
+	 * @param array<string, mixed> $attempted Attempted authoritative binding.
+	 * @return bool
+	 */
+	private function bindingIdentityMatchesCurrentRecord($existing, $attempted)
+	{
+		if ($this->bindingMac->equals($existing, $attempted)) {
+			return true;
+		}
+
+		if (!isset($existing['record_id'], $existing['_current_record_id'], $existing['_project_id'])
+			|| !isset($attempted['record_id'], $attempted['pid'])
+			|| (string) $existing['_current_record_id'] === ''
+			|| (string) $existing['_current_record_id'] !== (string) $attempted['record_id']
+			|| (int) $existing['_project_id'] !== (int) $attempted['pid']) {
+			return false;
+		}
+
+		$attemptedAtBindingRecord = $attempted;
+		$attemptedAtBindingRecord['record_id'] = $existing['record_id'];
+		return $this->bindingMac->equals($existing, $attemptedAtBindingRecord);
 	}
 
 	/**

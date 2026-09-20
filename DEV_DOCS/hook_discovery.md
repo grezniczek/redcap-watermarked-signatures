@@ -123,6 +123,14 @@ event. No existing binding produces one MAC-protected append; an identical
 binding is an idempotent no-op; and a different binding produces only a
 `sigwm_error_edoc_already_bound` event.
 
+The MAC-protected binding retains the record ID that was authoritative at
+binding time. After a trusted REDCap record rename, REDCap updates the External
+Module log row's indexed `record` value while leaving that immutable payload
+unchanged. A later save is therefore also idempotent when the attempted record
+matches that indexed current value and every other protected binding identity
+value still matches. Reusing the edoc in another project, event, instrument,
+field, or repeat context remains a conflict.
+
 The successful binding repeats the visible anchor as an indexed log parameter
 and inside `payload_json`. This makes the identifier printed in the image
 directly inspectable on the authoritative binding entry. The anchor is included

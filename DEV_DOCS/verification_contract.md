@@ -99,6 +99,13 @@ indexed External Module log `record` value supplies `current_record_id` after
 record rename. The MAC therefore remains verifiable while the live lookup and
 authorized display track the record's current identity.
 
+Save-time idempotence uses the same split deliberately. If a later save names
+the indexed current record, the repository compares every other protected
+identity value against the immutable binding after substituting only its
+binding-time `record_id`. This prevents a legitimate post-rename save from
+producing a false reuse diagnostic without permitting the edoc to move to a
+different field or context.
+
 ## Security and privacy boundary
 
 The service may return record IDs and username snapshots because later callers

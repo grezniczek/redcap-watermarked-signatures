@@ -96,7 +96,8 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
                     return new FakeModuleResult(array(
                         'log_id' => $index + 1,
                         'payload_json' => $log[1]['payload_json'],
-                        'project_id' => 123
+                        'project_id' => 123,
+                        'record' => $log[1]['record'] ?? null
                     ));
                 }
             }
@@ -1276,6 +1277,9 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($formRenameEvents[0]['rename_origin'] === 'data_entry_form_save', 'Form-save record rename has the wrong origin.');
     moduleAssert($formRenameEvents[0]['rename_username'] === 'form-rename-user', 'Form-save record rename lost its trusted username.');
     moduleAssert($formRenameModule->logs[2][1]['record'] === 'RENAME-NEW', 'Record-rename log was not indexed by the current record ID.');
+    $formRenameLogCount = count($formRenameModule->logs);
+    $formRenameModule->redcap_save_record(123, 'RENAME-NEW', 'consent', 417, null, null, null, 1);
+    moduleAssert(count($formRenameModule->logs) === $formRenameLogCount, 'The form save following a record rename appended a false binding conflict.');
 
     $directRenameModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($directRenameModule, 'proj', new FakeProject());

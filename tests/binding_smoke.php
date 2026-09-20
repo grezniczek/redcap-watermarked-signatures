@@ -144,7 +144,9 @@ class BindingTestModule
             if ($event['message'] === $message && (int) $event['edoc_id'] === (int) $edocId) {
                 return new BindingTestResult(array(
                     'log_id' => $event['log_id'],
-                    'payload_json' => $event['payload_json']
+                    'payload_json' => $event['payload_json'],
+                    'project_id' => (int) (json_decode($event['payload_json'], true)['pid'] ?? 0),
+                    'record' => $event['parameters']['record'] ?? null
                 ));
             }
         }
@@ -317,6 +319,24 @@ $laterSave['save_username'] = null;
 bindingAssert($repository->bindOnce($laterSave) === LogRepository::RESULT_IDEMPOTENT, 'A later save through another channel was not idempotent.');
 bindingAssert(count($module->events) === 1, 'A later save through another channel appended an audit error for an existing binding.');
 
+// REDCap updates the EM log's indexed record value during a rename while the
+// authenticated binding payload intentionally retains its binding-time ID.
+$module->events[0]['parameters']['record'] = 'R-002';
+$renamedSave = $binding;
+$renamedSave['record_id'] = 'R-002';
+bindingAssert($repository->bindOnce($renamedSave) === LogRepository::RESULT_IDEMPOTENT, 'A save after a trusted record rename was treated as an edoc conflict.');
+bindingAssert(count($module->events) === 1, 'A save after record rename appended a false binding-conflict event.');
+
+$renamedDifferentField = $renamedSave;
+$renamedDifferentField['field'] = 'sig_b';
+bindingAssert($repository->bindOnce($renamedDifferentField) === LogRepository::RESULT_CONFLICT, 'A renamed record allowed the edoc to move to another field.');
+bindingAssert(end($module->events)['message'] === 'sigwm_error_edoc_already_bound', 'A renamed-record field conflict did not append the expected error.');
+
+$wrongCurrentRecord = $renamedSave;
+$wrongCurrentRecord['record_id'] = 'R-003';
+bindingAssert($repository->bindOnce($wrongCurrentRecord) === LogRepository::RESULT_CONFLICT, 'The indexed current record authorized a different target record.');
+bindingAssert(end($module->events)['message'] === 'sigwm_error_edoc_already_bound', 'A different target record did not append the expected error.');
+
 $conflicting = $binding;
 $conflicting['record_id'] = 'R-002';
 $conflicting['pid'] = 999;
@@ -336,11 +356,11 @@ foreach ($module->events as &$event) {
 unset($event);
 bindingAssert($repository->bindOnce($binding) === LogRepository::RESULT_INVALID_EXISTING_MAC, 'Invalid existing MAC was not detected.');
 bindingAssert(end($module->events)['message'] === 'sigwm_error_binding_mac', 'Invalid binding MAC did not append the expected error.');
-bindingAssert($module->releaseCount === 5, 'A binding lock was not released.');
+bindingAssert($module->releaseCount === 8, 'A binding lock was not released.');
 bindingAssert($GLOBALS['bindingPrimaryQueryCount'] > 0, 'Primary database query path was not exercised.');
 bindingAssert($GLOBALS['bindingPrimaryLogQueryCount'] > 0, 'Binding lookup did not use the primary database path.');
 $primaryLogQueriesBeforeRenameLookup = $GLOBALS['bindingPrimaryLogQueryCount'];
-bindingAssert($repository->findBoundRecordId('R-001') === 'R-001', 'Bound record lookup did not return the current record ID.');
+bindingAssert($repository->findBoundRecordId('R-002') === 'R-002', 'Bound record lookup did not return the current record ID.');
 bindingAssert($GLOBALS['bindingPrimaryLogQueryCount'] === $primaryLogQueriesBeforeRenameLookup + 1, 'Bound record lookup did not use the primary database path.');
 
 $v2Module = new BindingTestModule();
