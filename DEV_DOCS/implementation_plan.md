@@ -1481,9 +1481,11 @@ The first implementation has resolved the original architecture decisions as
 follows:
 
 1. **REDCap hooks:** page envelopes are supplied through
-   `redcap_module_signature_upload_client_config`; upload interception uses
-   `redcap_every_page_before_render` for the signature upload receiver; and
-   authoritative binding uses `redcap_save_record`.
+   `redcap_module_signature_upload_client_config`; decoded PNG validation and
+   transformation use `redcap_module_signature_upload_before`; and authoritative
+   binding uses `redcap_save_record`. The broad
+   `redcap_every_page_before_render` hook is no longer used for signature
+   uploads.
 2. **Field-specific iframe envelope:** REDCap owns the shared upload form and
    adds the hook-configured hidden envelope for the field being uploaded. It
    removes module-managed inputs before every dialog is opened and does not add
@@ -1495,12 +1497,12 @@ follows:
    REDCap's trusted `stopUpload(...)` response after normal upload processing
    and records provenance only after the resulting edoc ID is available.
 5. **Upload-provenance robustness:** failure to verify an envelope or render a
-   watermark is fail-closed through the External Module hook exit mechanism.
-   If a successful REDCap upload response cannot be parsed, or the primary
-   provenance write fails, the module records a best-effort, non-secret
-   technical diagnostic. An upload that succeeds but is never persisted in a
-   field remains auditable as unbound provenance and is eligible for retention
-   cleanup.
+   watermark is fail-closed by appending a safe hook error, causing REDCap to
+   stop before temporary-file or edoc creation. If a successful REDCap upload
+   response cannot be parsed, or the primary provenance write fails, the module
+   records a best-effort, non-secret technical diagnostic. An upload that
+   succeeds but is never persisted in a field remains auditable as unbound
+   provenance and is eligible for retention cleanup.
 6. **One-time binding concurrency:** a MySQL/MariaDB named lock scoped to the
    globally unique edoc ID protects binding creation. The lock operations and
    binding lookup use the primary database connection to avoid read-replica

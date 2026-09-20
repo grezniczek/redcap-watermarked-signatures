@@ -33,7 +33,6 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     {
         public $framework;
         public $logs = array();
-        public $exitRequested = false;
         public $testUser;
         public $projectSettings = array();
         public $failUploadProvenanceLog = false;
@@ -102,11 +101,6 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
                 }
             }
             return new FakeModuleResult(null);
-        }
-
-        public function exitAfterHook()
-        {
-            $this->exitRequested = true;
         }
 
         public function getModulePath()
@@ -469,7 +463,31 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         );
     }
 
-    function captureSignatureUpload($module, $envelope, $originalPng, $edocId, $field = 'participant_signature')
+    function signatureUploadBefore($module, &$png, $requestFields, $context = array(), &$errors = null)
+    {
+        if ($errors === null) {
+            $errors = array();
+        }
+        $module->redcap_module_signature_upload_before(
+            123,
+            $context['record'] ?? null,
+            $context['instrument'] ?? 'consent',
+            $context['field'] ?? 'participant_signature',
+            $context['event_id'] ?? 417,
+            $context['group_id'] ?? null,
+            $context['repeat_instance'] ?? 1,
+            $context['survey_hash'] ?? null,
+            $context['response_id'] ?? null,
+            $context['capture_origin'] ?? 'data_entry',
+            $context['signature_type'] ?? 'signature',
+            $png,
+            $requestFields,
+            $errors
+        );
+        return $errors;
+    }
+
+    function captureSignatureUpload($module, $envelope, $originalPng, $edocId, $field = 'participant_signature', $signatureType = 'signature')
     {
         $_SERVER['REQUEST_METHOD'] = 'POST';
         $_GET = array('event_id' => '417', 'instance' => '1', 'page' => 'consent');
@@ -479,9 +497,22 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
             'myfile_base64' => base64_encode($originalPng)
         );
 
+        $signer = new EnvelopeSigner(KeyDerivation::derive(KeyDerivation::ENVELOPE_INFO));
+        $payload = $signer->verify($envelope);
+        $png = $originalPng;
+        $requestFields = $_POST;
+        unset($requestFields['myfile_base64']);
+
         ob_start();
         ob_start();
-        invokePrivate($module, 'intercept_signature_upload');
+        $errors = signatureUploadBefore($module, $png, $requestFields, array(
+            'instrument' => $payload['instrument'],
+            'field' => $field,
+            'event_id' => $payload['event_id'],
+            'capture_origin' => $payload['capture_origin'],
+            'signature_type' => $signatureType
+        ));
+        moduleAssert($errors === array(), 'Signature upload was rejected unexpectedly.');
         echo ob_get_clean();
         echo "<script>window.parent.window.stopUpload(1,'{$field}','{$edocId}','signature.png','',417,'','','',1,true);</script>";
         ob_end_flush();
@@ -755,6 +786,16 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     );
     moduleAssert($fieldReferenceUpload['v'] === WatermarkedSignaturesExternalModule::BINDING_PROVENANCE_VERSION, 'New upload provenance did not use the binding format version.');
     moduleAssert($fieldReferenceUpload['field_reference'] === 'CONSENT', 'Upload provenance did not retain the signed field reference.');
+    $enhancedSignatureUpload = captureSignatureUpload(
+        $multiEnvelopeModule,
+        $multiEnvelopeConfig['envelopes']['witness_signature'],
+        $originalPng,
+        99509,
+        'witness_signature',
+        'enhanced_signature'
+    );
+    moduleAssert($enhancedSignatureUpload['field'] === 'witness_signature', 'Enhanced Signature upload did not use the before-upload hook.');
+    moduleAssert($enhancedSignatureUpload['field_reference'] === 'WITNESS', 'Enhanced Signature upload lost its field reference.');
     REDCap::$data = array(
         'FIELD-REFERENCE' => array(417 => array('participant_signature' => '99507'))
     );
@@ -978,15 +1019,21 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'sigwm_envelope' => $replayEnvelope,
         'myfile_base64' => base64_encode($originalPng)
     );
+    $replayPng = $originalPng;
+    $replayRequestFields = $_POST;
+    unset($replayRequestFields['myfile_base64']);
     ob_start();
-    invokePrivate($replaySurveyModule, 'intercept_signature_upload');
+    $replayErrors = signatureUploadBefore($replaySurveyModule, $replayPng, $replayRequestFields, array(
+        'capture_origin' => 'survey',
+        'survey_hash' => 'public-survey-hash'
+    ));
     $replayFailureResponse = ob_get_clean();
     ExternalModulesStub::$noAuth = false;
 
-    moduleAssert($replaySurveyModule->exitRequested, 'Replayed no-auth envelope did not fail closed.');
+    moduleAssert(!empty($replayErrors), 'Replayed no-auth envelope did not fail closed.');
     moduleAssert(count($replaySurveyModule->logs) === $replayLogCount, 'Replayed no-auth envelope appended a log entry.');
     moduleAssert(count(payloadsForMessage($replaySurveyModule, 'sigwm_upload')) === 1, 'Replayed no-auth envelope created another upload provenance event.');
-    moduleAssert(strpos($replayFailureResponse, 'could not be securely watermarked') !== false, 'Replayed no-auth envelope did not return the standard failure response.');
+    moduleAssert($replayFailureResponse === '', 'The before-upload hook emitted a failure response.');
 
     $abandonedSurveyModule = new WatermarkedSignaturesExternalModule();
     $abandonedSurveyModule->framework = new FakeFramework();
@@ -1027,24 +1074,44 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'sigwm_envelope' => $signer->sign($payload),
         'myfile_base64' => base64_encode($originalPng)
     );
+    $preexistingErrorPng = $originalPng;
+    $preexistingErrorRequestFields = $_POST;
+    unset($preexistingErrorRequestFields['myfile_base64']);
+    $preexistingErrors = array(array('message' => 'Earlier module rejected the upload.', 'module' => 'earlier_module'));
+    signatureUploadBefore($module, $preexistingErrorPng, $preexistingErrorRequestFields, array(), $preexistingErrors);
+    moduleAssert($preexistingErrorPng === $originalPng, 'The module transformed a PNG after an earlier module rejected it.');
+    moduleAssert(count($preexistingErrors) === 1 && $preexistingErrors[0]['module'] === 'earlier_module', 'The module altered an earlier upload error.');
 
     // Reproduce the framework's hook output wrapper. It closes the topmost
     // buffer after the module returns, which must consume only our guard.
+    $uploadPng = $originalPng;
+    $uploadRequestFields = $_POST;
+    unset($uploadRequestFields['myfile_base64']);
     ob_start();
     ob_start();
-    invokePrivate($module, 'intercept_signature_upload');
+    $uploadErrors = signatureUploadBefore($module, $uploadPng, $uploadRequestFields);
+    moduleAssert($uploadErrors === array(), 'Valid signature upload was rejected.');
     echo ob_get_clean();
     moduleAssert(count($module->logs) === 0, 'Provenance was recorded before REDCap returned an edoc ID.');
+    // Simulate a later enabled module replacing the by-reference PNG. Until
+    // the post-storage hook exists, the response observer must still hash the
+    // exact final bytes that Core stores.
+    $laterModuleImage = imagecreatefromstring($uploadPng);
+    $laterModuleMark = imagecolorallocate($laterModuleImage, 1, 2, 3);
+    imagesetpixel($laterModuleImage, 0, 0, $laterModuleMark);
+    ob_start();
+    imagepng($laterModuleImage);
+    $uploadPng = ob_get_clean();
     echo "<script>window.parent.window.stopUpload(1,'participant_signature','98137','signature.png','',417,'','','',1,true);</script>";
     ob_end_flush();
     ob_end_flush();
     $response = ob_get_clean();
 
-    $watermarkedPng = base64_decode($_POST['myfile_base64'], true);
+    $watermarkedPng = $uploadPng;
     $info = getimagesizefromstring($watermarkedPng);
     moduleAssert(
         $info[0] === 460 && $info[1] === 120 + Renderer::FOOTER_HEIGHT,
-        'Upload interceptor did not replace the PNG with the two-line public-reference footer.'
+        'Before-upload hook did not replace the PNG with the two-line public-reference footer.'
     );
     moduleAssert(count($module->logs) === 1 && $module->logs[0][0] === 'sigwm_upload', 'Upload provenance was not logged.');
     moduleAssert($module->logs[0][1]['edoc_id'] === 98137, 'The returned edoc ID was not captured.');
@@ -1076,9 +1143,13 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'sigwm_envelope' => $signer->sign($payload),
         'myfile_base64' => base64_encode($originalPng)
     );
+    $responseFailurePng = $originalPng;
+    $responseFailureRequestFields = $_POST;
+    unset($responseFailureRequestFields['myfile_base64']);
     ob_start();
     ob_start();
-    invokePrivate($responseFailureModule, 'intercept_signature_upload');
+    $responseFailureErrors = signatureUploadBefore($responseFailureModule, $responseFailurePng, $responseFailureRequestFields);
+    moduleAssert($responseFailureErrors === array(), 'Response-failure test upload was rejected.');
     echo ob_get_clean();
     // A success response with an altered edoc-ID shape must leave a durable
     // diagnostic instead of silently losing this capture's provenance.
@@ -1102,9 +1173,13 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'sigwm_envelope' => $signer->sign($payload),
         'myfile_base64' => base64_encode($originalPng)
     );
+    $loggingFailurePng = $originalPng;
+    $loggingFailureRequestFields = $_POST;
+    unset($loggingFailureRequestFields['myfile_base64']);
     ob_start();
     ob_start();
-    invokePrivate($loggingFailureModule, 'intercept_signature_upload');
+    $loggingFailureErrors = signatureUploadBefore($loggingFailureModule, $loggingFailurePng, $loggingFailureRequestFields);
+    moduleAssert($loggingFailureErrors === array(), 'Logging-failure test upload was rejected.');
     echo ob_get_clean();
     echo "<script>window.parent.window.stopUpload(1,'participant_signature','98139','signature.png','',417,'','','',1,true);</script>";
     ob_end_flush();
@@ -1306,10 +1381,13 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'sigwm_envelope' => $signer->sign($invalidOriginPayload),
         'myfile_base64' => base64_encode($originalPng)
     );
+    $invalidOriginPng = $originalPng;
+    $invalidOriginRequestFields = $_POST;
+    unset($invalidOriginRequestFields['myfile_base64']);
     ob_start();
-    invokePrivate($invalidOriginModule, 'intercept_signature_upload');
+    $invalidOriginErrors = signatureUploadBefore($invalidOriginModule, $invalidOriginPng, $invalidOriginRequestFields);
     ob_end_clean();
-    moduleAssert($invalidOriginModule->exitRequested, 'A signed envelope with an unsupported capture origin was accepted.');
+    moduleAssert(!empty($invalidOriginErrors), 'A signed envelope with an unsupported capture origin was accepted.');
     moduleAssert($invalidOriginModule->logs[0][0] === 'sigwm_error_invalid_envelope', 'Invalid capture origin did not produce an envelope error.');
 
     $scopeMismatchModule = new WatermarkedSignaturesExternalModule();
@@ -1322,11 +1400,16 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'sigwm_envelope' => $signer->sign($payload),
         'myfile_base64' => base64_encode($originalPng)
     );
+    $scopeMismatchPng = $originalPng;
+    $scopeMismatchRequestFields = $_POST;
+    unset($scopeMismatchRequestFields['myfile_base64']);
 
     ob_start();
-    invokePrivate($scopeMismatchModule, 'intercept_signature_upload');
+    $scopeMismatchErrors = signatureUploadBefore($scopeMismatchModule, $scopeMismatchPng, $scopeMismatchRequestFields, array(
+        'event_id' => 418
+    ));
     ob_end_clean();
-    moduleAssert($scopeMismatchModule->exitRequested, 'An envelope from another request event was accepted.');
+    moduleAssert(!empty($scopeMismatchErrors), 'An envelope from another request event was accepted.');
 
     $failedModule = new WatermarkedSignaturesExternalModule();
     $failedModule->framework = new FakeFramework();
@@ -1337,16 +1420,21 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'field_name' => 'participant_signature-linknew',
         'myfile_base64' => base64_encode($originalPng)
     );
+    $failedPng = $originalPng;
+    $failedRequestFields = $_POST;
+    unset($failedRequestFields['myfile_base64']);
 
     ob_start();
-    invokePrivate($failedModule, 'intercept_signature_upload');
+    $failedErrors = signatureUploadBefore($failedModule, $failedPng, $failedRequestFields, array(
+        'repeat_instance' => 3
+    ));
     $failureResponse = ob_get_clean();
 
-    moduleAssert($failedModule->exitRequested, 'Missing envelopes do not fail closed.');
+    moduleAssert(!empty($failedErrors), 'Missing envelopes do not fail closed.');
     moduleAssert($failedModule->logs[0][0] === 'sigwm_error_invalid_envelope', 'Missing envelope error was not logged.');
-    moduleAssert(strpos($failureResponse, 'could not be securely watermarked') !== false, 'The upload failure response is missing.');
-    moduleAssert(strpos($failureResponse, 'stopUpload(0, "participant_signature"') !== false, 'The upload failure response did not emit a JSON-encoded field name.');
-    moduleAssert(strpos($failureResponse, ", 3, true)") !== false, 'The failure response lost the repeat instance.');
+    moduleAssert($failureResponse === '', 'The before-upload hook emitted a failure response.');
+    moduleAssert($failedErrors[0]['module'] === 'watermarked_signatures', 'The upload error did not identify its module.');
+    moduleAssert(strpos($failedErrors[0]['message'], 'could not be securely watermarked') !== false, 'The upload error is missing the safe user message.');
 
     $noAuthFailureModule = new WatermarkedSignaturesExternalModule();
     $noAuthFailureModule->framework = new FakeFramework();
@@ -1358,15 +1446,22 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'field_name' => 'participant_signature-linknew',
         'myfile_base64' => base64_encode($originalPng)
     );
+    $noAuthFailurePng = $originalPng;
+    $noAuthFailureRequestFields = $_POST;
+    unset($noAuthFailureRequestFields['myfile_base64']);
 
     ob_start();
-    invokePrivate($noAuthFailureModule, 'intercept_signature_upload');
+    $noAuthFailureErrors = signatureUploadBefore($noAuthFailureModule, $noAuthFailurePng, $noAuthFailureRequestFields, array(
+        'repeat_instance' => 3,
+        'survey_hash' => 'public-survey-hash',
+        'capture_origin' => 'survey'
+    ));
     $noAuthFailureResponse = ob_get_clean();
     ExternalModulesStub::$noAuth = false;
 
-    moduleAssert($noAuthFailureModule->exitRequested, 'No-auth missing envelopes do not fail closed.');
+    moduleAssert(!empty($noAuthFailureErrors), 'No-auth missing envelopes do not fail closed.');
     moduleAssert($noAuthFailureModule->logs === array(), 'No-auth upload failures were written to the durable module log.');
-    moduleAssert(strpos($noAuthFailureResponse, 'could not be securely watermarked') !== false, 'The no-auth upload failure response is missing.');
+    moduleAssert($noAuthFailureResponse === '', 'The no-auth before-upload hook emitted a failure response.');
 
     ExternalModulesStub::$noAuth = true;
     moduleAssert(
@@ -1375,9 +1470,6 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     );
     ExternalModulesStub::$noAuth = false;
     moduleAssert($noAuthFailureModule->logs === array(), 'No-auth safe logging appended a durable module log entry.');
-
-    $_POST = array('field_name' => 'participant_signature</script><script>alert(1)</script>-linknew');
-    moduleAssert(invokePrivate($failedModule, 'posted_field_name') === null, 'A hostile posted field name was accepted.');
 
     echo "Watermarked Signatures module smoke tests passed.\n";
 }

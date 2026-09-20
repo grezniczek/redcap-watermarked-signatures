@@ -105,7 +105,63 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	}
 
 	/**
-	 * The signature receiver calls this hook before decoding myfile_base64.
+	 * @param int $project_id
+	 * @param string|null $record
+	 * @param string $instrument
+	 * @param string $field_name
+	 * @param int $event_id
+	 * @param int|null $group_id
+	 * @param int $repeat_instance
+	 * @param string|null $survey_hash
+	 * @param int|null $response_id
+	 * @param string $capture_origin
+	 * @param string $signature_type
+	 * @param string $png
+	 * @param array<string,scalar> $request_fields
+	 * @param array<int,mixed> $errors
+	 * @return void
+	 */
+	function redcap_module_signature_upload_before($project_id, $record, $instrument, $field_name, $event_id, $group_id, $repeat_instance, $survey_hash, $response_id, $capture_origin, $signature_type, &$png, $request_fields, &$errors)
+	{
+		if (!empty($errors)) {
+			return;
+		}
+
+		try {
+			$this->init_proj($project_id);
+			$this->init_config();
+			$this->watermark_signature_upload(
+				$instrument,
+				$field_name,
+				$event_id,
+				$capture_origin,
+				$signature_type,
+				$png,
+				$request_fields,
+				$errors
+			);
+		} catch (Throwable $exception) {
+			try {
+				$this->reject_signature_upload(
+					$errors,
+					$field_name,
+					$event_id,
+					"sigwm_error_upload_render",
+					$exception->getMessage()
+				);
+			} catch (Throwable $reportingException) {
+				error_log("Watermarked Signatures upload rejection failed: " . $reportingException->getMessage());
+				$errors[] = array(
+					"message" => "The signature image could not be securely watermarked.",
+					"module" => "watermarked_signatures"
+				);
+			}
+		}
+	}
+
+	/**
+	 * Retain the broad page hook only for record-rename auditing. Signature
+	 * uploads are handled by redcap_module_signature_upload_before().
 	 *
 	 * @param int|null $project_id
 	 * @return void
@@ -118,11 +174,6 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 		$this->init_proj($project_id);
 		$this->init_config();
-		if ($this->is_signature_upload_request()) {
-			$this->intercept_signature_upload();
-			return;
-		}
-
 		$this->capture_direct_record_rename();
 	}
 
@@ -1146,35 +1197,49 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		}
 	}
 
-	/** @return void */
-	private function intercept_signature_upload()
+	/**
+	 * @param string $instrument
+	 * @param string $field
+	 * @param int $eventId
+	 * @param string $captureOrigin
+	 * @param string $signatureType
+	 * @param string $png
+	 * @param array<string,scalar> $requestFields
+	 * @param array<int,mixed> $errors
+	 * @return void
+	 */
+	private function watermark_signature_upload($instrument, $field, $eventId, $captureOrigin, $signatureType, &$png, $requestFields, &$errors)
 	{
-		if (($_SERVER["REQUEST_METHOD"] ?? "") !== "POST") {
-			return;
-		}
-
-		$field = $this->posted_field_name();
-		if ($field === null) {
-			return;
-		}
-
 		$metadata = $this->get_project_metadata();
-		if (!isset($metadata[$field]) || !$this->is_configured_signature_field($metadata[$field])) {
+		if (
+			!isset($metadata[$field])
+			|| ($metadata[$field]['element_validation_type'] ?? null) !== $signatureType
+			|| !$this->is_configured_signature_field($metadata[$field])
+		) {
 			return;
 		}
 
-		$envelope = isset($_POST["sigwm_envelope"]) ? (string) $_POST["sigwm_envelope"] : "";
+		$envelope = isset($requestFields["sigwm_envelope"]) && is_scalar($requestFields["sigwm_envelope"])
+			? (string) $requestFields["sigwm_envelope"]
+			: "";
 		if ($envelope === "") {
-			$this->fail_upload($field, "sigwm_error_invalid_envelope", "The signed watermark envelope is missing.");
+			$this->reject_signature_upload($errors, $field, $eventId, "sigwm_error_invalid_envelope", "The signed watermark envelope is missing.");
 			return;
 		}
 
 		try {
 			$signer = new EnvelopeSigner(KeyDerivation::derive(KeyDerivation::ENVELOPE_INFO));
 			$payload = $signer->verify($envelope);
-			$this->validate_envelope_payload($payload, $field, $metadata[$field]);
+			$this->validate_envelope_payload(
+				$payload,
+				$field,
+				$metadata[$field],
+				$instrument,
+				$eventId,
+				$captureOrigin
+			);
 		} catch (Throwable $exception) {
-			$this->fail_upload($field, "sigwm_error_invalid_envelope", $exception->getMessage());
+			$this->reject_signature_upload($errors, $field, $eventId, "sigwm_error_invalid_envelope", $exception->getMessage());
 			return;
 		}
 
@@ -1185,10 +1250,10 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 					throw new \UnexpectedValueException('The signed signature envelope has already been used.');
 				}
 			} catch (Throwable $exception) {
-				// Fail closed. fail_upload() deliberately does not persist a
+				// Fail closed. reject_signature_upload() deliberately does not persist a
 				// no-auth error row, so nonce replay attempts cannot amplify
 				// the module log.
-				$this->fail_upload($field, 'sigwm_error_replayed_envelope', $exception->getMessage());
+				$this->reject_signature_upload($errors, $field, $eventId, 'sigwm_error_replayed_envelope', $exception->getMessage());
 				return;
 			}
 		}
@@ -1219,7 +1284,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			$this->log_field_reference_configuration_error($payload, $fieldReference);
 			$renderer = new Renderer();
 			$watermarkedPng = $renderer->renderBase64(
-				isset($_POST["myfile_base64"]) ? $_POST["myfile_base64"] : "",
+				base64_encode($png),
 				$anchor,
 				$payload["context_ref"],
 				$captureReference,
@@ -1228,11 +1293,11 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				$backgroundImage
 			);
 		} catch (Throwable $exception) {
-			$this->fail_upload($field, "sigwm_error_upload_render", $exception->getMessage());
+			$this->reject_signature_upload($errors, $field, $eventId, "sigwm_error_upload_render", $exception->getMessage());
 			return;
 		}
 
-		$_POST["myfile_base64"] = base64_encode($watermarkedPng);
+		$png = $watermarkedPng;
 		$provenance = array(
 			"v" => self::BINDING_PROVENANCE_VERSION,
 			"capture_ref" => $captureReference,
@@ -1252,7 +1317,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			"instrument" => $payload["instrument"],
 			"field" => $payload["field"],
 			"captured_at" => $capturedAt,
-			"file_sha256" => hash("sha256", $watermarkedPng),
+			"file_sha256" => null,
 			"envelope_nonce" => $payload["nonce"],
 			"watermark_version" => Renderer::VERSION,
 			"background_image_mode" => $backgroundImage["requested_mode"],
@@ -1262,16 +1327,19 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		);
 		$provenance = array_merge($provenance, $econsentIpContext);
 
-		$this->capture_edoc_id_from_response($field, $provenance);
+		$this->capture_edoc_id_from_response($field, $provenance, $png);
 	}
 
 	/**
 	 * @param array<string, mixed> $payload
 	 * @param string $postedField
 	 * @param array<string, mixed> $fieldMetadata
+	 * @param string $instrument
+	 * @param int $eventId
+	 * @param string $captureOrigin
 	 * @return void
 	 */
-	private function validate_envelope_payload($payload, $postedField, $fieldMetadata)
+	private function validate_envelope_payload($payload, $postedField, $fieldMetadata, $instrument, $eventId, $captureOrigin)
 	{
 		$required = array(
 			"v",
@@ -1303,16 +1371,13 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		if (!is_int($payload["event_id"]) || !$this->proj->validateEventId($payload["event_id"])) {
 			throw new \UnexpectedValueException("Envelope event mismatch.");
 		}
-		$requestEventId = isset($_GET["event_id"]) && is_numeric($_GET["event_id"])
-			? (int) $_GET["event_id"]
-			: null;
-		if ($requestEventId === null || $payload["event_id"] !== $requestEventId) {
+		if ($payload["event_id"] !== (int) $eventId) {
 			throw new \UnexpectedValueException("Envelope event does not match the upload request.");
 		}
 		if (!is_string($payload["instrument"]) || $payload["instrument"] !== $fieldMetadata["form_name"]) {
 			throw new \UnexpectedValueException("Envelope instrument mismatch.");
 		}
-		if (isset($_GET["page"]) && $_GET["page"] !== "" && $payload["instrument"] !== (string) $_GET["page"]) {
+		if ($payload["instrument"] !== (string) $instrument) {
 			throw new \UnexpectedValueException("Envelope instrument does not match the upload request.");
 		}
 		if (!$this->proj->validateFormEvent($payload["instrument"], $payload["event_id"])) {
@@ -1323,6 +1388,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		}
 		if (!$this->is_valid_origin($payload["capture_origin"])) {
 			throw new \UnexpectedValueException("Invalid envelope capture origin.");
+		}
+		if ($payload["capture_origin"] !== $captureOrigin) {
+			throw new \UnexpectedValueException("Envelope capture origin does not match the upload request.");
 		}
 		if (!is_string($payload["context_ref"]) || !preg_match('/^C:[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]$/', $payload["context_ref"])) {
 			throw new \UnexpectedValueException("Invalid envelope context reference.");
@@ -1411,16 +1479,17 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	/**
 	 * @param string $field
 	 * @param array<string, mixed> $provenance
+	 * @param string $finalPng
 	 * @return void
 	 */
-	private function capture_edoc_id_from_response($field, $provenance)
+	private function capture_edoc_id_from_response($field, $provenance, &$finalPng)
 	{
 		$module = $this;
 		$recorded = false;
 		$responseFailureLogged = false;
 		$fieldPattern = preg_quote($field, '/');
 
-		ob_start(function ($output) use ($module, &$recorded, &$responseFailureLogged, $fieldPattern, $provenance) {
+		ob_start(function ($output) use ($module, &$recorded, &$responseFailureLogged, $fieldPattern, $provenance, &$finalPng) {
 			if (!$recorded && preg_match(
 				"/stopUpload\\(\\s*1\\s*,\\s*(['\"]){$fieldPattern}\\1\\s*,\\s*(['\"])([1-9][0-9]*)\\2/",
 				$output,
@@ -1429,6 +1498,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				$recorded = true;
 				$event = $provenance;
 				$event["edoc_id"] = (int) $matches[3];
+				$event["file_sha256"] = hash("sha256", $finalPng);
 				$module->append_upload_provenance($event);
 			} elseif (
 				!$recorded && !$responseFailureLogged
@@ -1522,12 +1592,14 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	}
 
 	/**
+	 * @param array<int,mixed> $errors
 	 * @param string $field
+	 * @param int $eventId
 	 * @param string $eventType
 	 * @param string $technicalMessage
-	 * @return void Does not return after exitAfterHook().
+	 * @return void
 	 */
-	private function fail_upload($field, $eventType, $technicalMessage)
+	private function reject_signature_upload(&$errors, $field, $eventId, $eventType, $technicalMessage)
 	{
 		// A public survey respondent can repeatedly submit an invalid upload.
 		// Fail closed, but do not turn those requests into unbounded durable
@@ -1537,7 +1609,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			try {
 				$this->log($eventType, array(
 					"field" => $field,
-					"event_id" => isset($_GET["event_id"]) && is_numeric($_GET["event_id"]) ? (int) $_GET["event_id"] : "",
+					"event_id" => (int) $eventId,
 					"technical_message" => substr((string) $technicalMessage, 0, 1000)
 				));
 			} catch (Throwable $exception) {
@@ -1545,46 +1617,10 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			}
 		}
 
-		$message = $this->framework->tt('ui_upload_watermark_failed'); // The signature could not be securely watermarked. Refresh the form or survey page, then capture the signature again.
-		$fieldJson = json_encode(
-			$this->escape($field),
-			JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+		$errors[] = array(
+			"message" => $this->framework->tt('ui_upload_watermark_failed'),
+			"module" => "watermarked_signatures"
 		);
-		$messageJson = json_encode($message);
-		$instance = isset($_GET["instance"]) && is_numeric($_GET["instance"]) && (int) $_GET["instance"] > 0
-			? (int) $_GET["instance"]
-			: 1;
-		echo "<script type=\"text/javascript\">
-            window.parent.window.stopUpload(0, {$fieldJson}, '0', '', '', '', '', '', '', {$instance}, true);
-            window.parent.window.alert({$messageJson});
-        </script>";
-		$this->exitAfterHook();
-	}
-
-	/** @return bool */
-	private function is_signature_upload_request()
-	{
-		$page = defined("PAGE") ? (string) PAGE : "";
-		$passthru = isset($_GET["__passthru"]) ? rawurldecode((string) $_GET["__passthru"]) : "";
-
-		return $page === "DataEntry/file_upload.php"
-			|| substr($page, -strlen("/DataEntry/file_upload.php")) === "/DataEntry/file_upload.php"
-			|| $passthru === "DataEntry/file_upload.php";
-	}
-
-	/** @return string|null */
-	private function posted_field_name()
-	{
-		if (!isset($_POST["field_name"]) || !is_string($_POST["field_name"])) {
-			return null;
-		}
-
-		$field = explode("-", $_POST["field_name"], 2)[0];
-		if (!preg_match('/^[a-z][a-z0-9_]*$/i', $field)) {
-			return null;
-		}
-
-		return $field;
 	}
 
 	/**

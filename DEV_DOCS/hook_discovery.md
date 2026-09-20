@@ -32,20 +32,20 @@ where applicable.
 
 ## Upload interception
 
-`DataEntry/file_upload.php` includes `Config/init_project.php` before it decodes
-`myfile_base64`. During project initialization REDCap calls
-`redcap_every_page_before_render`.
-
-The module uses that hook only when the active request is the signature upload
-receiver. At this point:
+`DataEntry/file_upload.php` calls `redcap_module_signature_upload_before` only
+after it has validated the signature field and event and decoded a non-empty
+`myfile_base64` value. At this point:
 
 - REDCap has established the project, authentication/survey context, CSRF
   handling, metadata, and event;
-- the posted base64 signature is still mutable; and
+- the decoded PNG bytes are mutable by reference; and
 - `Files::uploadFile()` has not run.
 
-The module verifies the envelope and replaces `$_POST['myfile_base64']` with the
-server-rendered PNG. REDCap then continues through its normal upload path.
+The module reads its signed envelope from the hook's untrusted scalar request
+fields, verifies it against the trusted hook context, and replaces the
+by-reference PNG with the server-rendered image. It no longer identifies the
+receiver route or mutates `$_POST`. REDCap writes the final PNG to a temporary
+file only after all enabled modules have run without appending an error.
 
 ## Capturing the edoc ID
 
@@ -68,7 +68,9 @@ soon as the hook returns. The module places an inert guard buffer above its
 response-capture buffer; the framework consumes the guard, leaving the capture
 buffer active for the subsequent output from `file_upload.php`.
 
-The buffer does not alter the response.
+The buffer does not alter the response. It computes the provenance digest from
+the final by-reference PNG when REDCap reports success, so the digest also
+covers a valid transformation made by a later enabled module.
 
 ## WM1 image format
 
@@ -98,9 +100,10 @@ footer structure or identifier semantics.
 ## Failure behavior
 
 For an action-tagged signature field, a missing/invalid envelope or rendering
-failure terminates the upload request through the External Module framework's
-`exitAfterHook()` mechanism. This prevents REDCap from silently storing the
-unwatermarked payload.
+failure appends a safe error to the before-upload hook's shared error list.
+REDCap then returns its ordinary upload-failure response without creating a
+temporary file or edoc. The module writes no HTTP response from the hook. This
+prevents REDCap from silently storing the unwatermarked payload.
 
 ## Save-time binding
 
@@ -208,11 +211,11 @@ without falsely associating it with a record.
 ## Capture origin and actor audit fields
 
 The data-entry and survey rendering hooks place a mandatory `capture_origin`
-value (`data_entry` or `survey`) in every signed envelope. Upload interception
-copies that trusted value into `sigwm_upload` and independently snapshots the
-current authenticated username as nullable `capture_username`. Public surveys
-therefore have an explicit survey origin and a null username; no survey hash is
-stored.
+value (`data_entry` or `survey`) in every signed envelope. The before-upload
+hook verifies that signed value against REDCap's independently derived capture
+origin, copies it into `sigwm_upload`, and snapshots the current authenticated
+username as nullable `capture_username`. Public surveys therefore have an
+explicit survey origin and a null username; no survey hash is stored.
 
 `redcap_save_record` independently derives `save_origin` from its trusted survey
 hook arguments and snapshots `save_username`. The first binding is created only
