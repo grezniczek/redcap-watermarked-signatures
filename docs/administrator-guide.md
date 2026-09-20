@@ -119,10 +119,9 @@ message to correlate with the REDCap audit trail.
 
 Two upload-provenance diagnostics deserve particular attention:
 
-- `sigwm_error_upload_provenance_response`: REDCap reported a successful upload,
-  but the module could not recognize the final edoc ID in the upload response.
-  The image may exist without module upload provenance, so it will not become a
-  normal bound signature.
+- `sigwm_error_upload_provenance_after`: REDCap reported successful storage,
+  but the post-storage hook context was invalid. The image may exist without
+  module upload provenance, so it will not become a normal bound signature.
 - `sigwm_error_upload_provenance_logging`: REDCap created the edoc, but the
   normal `sigwm_upload` provenance entry could not be written. The diagnostic
   retains safe capture context where logging remained available.

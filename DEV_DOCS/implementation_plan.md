@@ -830,7 +830,7 @@ sigwm_error_missing_provenance
 sigwm_error_edoc_already_bound
 sigwm_error_capture_edoc_conflict
 sigwm_error_upload_render
-sigwm_error_upload_provenance_response
+sigwm_error_upload_provenance_after
 sigwm_error_upload_provenance_logging
 sigwm_error_binding_mac
 sigwm_error_file_digest
@@ -1482,8 +1482,9 @@ follows:
 
 1. **REDCap hooks:** page envelopes are supplied through
    `redcap_module_signature_upload_client_config`; decoded PNG validation and
-   transformation use `redcap_module_signature_upload_before`; and authoritative
-   binding uses `redcap_save_record`. The broad
+   transformation use `redcap_module_signature_upload_before`; successful
+   edoc storage is reported through `redcap_module_signature_upload_after`;
+   and authoritative binding uses `redcap_save_record`. The broad
    `redcap_every_page_before_render` hook is no longer used for signature
    uploads.
 2. **Field-specific iframe envelope:** REDCap owns the shared upload form and
@@ -1493,16 +1494,17 @@ follows:
 3. **Capture-reference timing:** a fresh capture reference is generated at
    upload time, immediately before server-side rendering. The envelope carries
    the separately generated, field-specific context reference.
-4. **edoc ID capture:** a guarded, request-scoped output buffer observes
-   REDCap's trusted `stopUpload(...)` response after normal upload processing
-   and records provenance only after the resulting edoc ID is available.
+4. **edoc ID capture:** `redcap_module_signature_upload_after` supplies the
+   authoritative edoc ID, byte count, and digest after REDCap has stored and
+   mapped the final PNG. The module records provenance without observing the
+   iframe response.
 5. **Upload-provenance robustness:** failure to verify an envelope or render a
    watermark is fail-closed by appending a safe hook error, causing REDCap to
-   stop before temporary-file or edoc creation. If a successful REDCap upload
-   response cannot be parsed, or the primary provenance write fails, the module
-   records a best-effort, non-secret technical diagnostic. An upload that
-   succeeds but is never persisted in a field remains auditable as unbound
-   provenance and is eligible for retention cleanup.
+   stop before temporary-file or edoc creation. If the post-storage callback
+   is invalid, or the primary provenance write fails, the module records a
+   best-effort, non-secret technical diagnostic. An upload that succeeds but
+   is never persisted in a field remains auditable as unbound provenance and
+   is eligible for retention cleanup.
 6. **One-time binding concurrency:** a MySQL/MariaDB named lock scoped to the
    globally unique edoc ID protects binding creation. The lock operations and
    binding lookup use the primary database connection to avoid read-replica

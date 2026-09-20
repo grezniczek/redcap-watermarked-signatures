@@ -59,6 +59,9 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	/** @var int|null Current REDCap project ID. */
 	private $project_id = null;
 
+	/** @var array<string,array<string,mixed>> Provenance awaiting successful edoc storage. */
+	private $pending_signature_upload_provenance = array();
+
 	const ACTIONTAG = "@WATERMARKED-SIGNATURE";
 	const ENVELOPE_VERSION = 1;
 	// Version of the matched upload/binding provenance pair. This is distinct
@@ -160,8 +163,63 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	}
 
 	/**
+	 * @param int $project_id
+	 * @param string|null $record
+	 * @param string $instrument
+	 * @param string $field_name
+	 * @param int $event_id
+	 * @param int|null $group_id
+	 * @param int $repeat_instance
+	 * @param string|null $survey_hash
+	 * @param int|null $response_id
+	 * @param string $capture_origin
+	 * @param string $signature_type
+	 * @param int $edoc_id
+	 * @param int $file_size
+	 * @param string $file_sha256
+	 * @param array<string,scalar> $request_fields
+	 * @return void
+	 */
+	function redcap_module_signature_upload_after($project_id, $record, $instrument, $field_name, $event_id, $group_id, $repeat_instance, $survey_hash, $response_id, $capture_origin, $signature_type, $edoc_id, $file_size, $file_sha256, $request_fields)
+	{
+		if (!isset($this->pending_signature_upload_provenance[$field_name])) {
+			return;
+		}
+
+		$provenance = $this->pending_signature_upload_provenance[$field_name];
+		unset($this->pending_signature_upload_provenance[$field_name]);
+
+		try {
+			if (
+				(int) $project_id !== (int) ($provenance['pid'] ?? 0)
+				|| (string) $instrument !== (string) ($provenance['instrument'] ?? '')
+				|| (string) $field_name !== (string) ($provenance['field'] ?? '')
+				|| (int) $event_id !== (int) ($provenance['event_id'] ?? 0)
+				|| (string) $capture_origin !== (string) ($provenance['capture_origin'] ?? '')
+				|| (int) $edoc_id < 1
+				|| (int) $file_size < 1
+				|| !is_string($file_sha256)
+				|| preg_match('/^[a-f0-9]{64}$/D', $file_sha256) !== 1
+			) {
+				throw new \UnexpectedValueException('The post-storage signature context is invalid.');
+			}
+
+			$provenance['edoc_id'] = (int) $edoc_id;
+			$provenance['file_sha256'] = $file_sha256;
+			$this->append_upload_provenance($provenance);
+		} catch (Throwable $exception) {
+			$provenance['edoc_id'] = is_numeric($edoc_id) ? (int) $edoc_id : '';
+			$this->log_upload_provenance_failure(
+				'sigwm_error_upload_provenance_after',
+				$provenance,
+				$exception->getMessage()
+			);
+		}
+	}
+
+	/**
 	 * Retain the broad page hook only for record-rename auditing. Signature
-	 * uploads are handled by redcap_module_signature_upload_before().
+	 * uploads are handled by the dedicated signature-upload hooks.
 	 *
 	 * @param int|null $project_id
 	 * @return void
@@ -1050,7 +1108,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		});
 
 		// The EM framework closes its topmost hook buffer on return. Keep an
-		// inert guard above the response observer, as with upload provenance.
+		// inert guard above this record-rename response observer.
 		ob_start();
 	}
 
@@ -1326,8 +1384,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			"background_image_rotation" => $backgroundImage["rotation"]
 		);
 		$provenance = array_merge($provenance, $econsentIpContext);
-
-		$this->capture_edoc_id_from_response($field, $provenance, $png);
+		$this->pending_signature_upload_provenance[$field] = $provenance;
 	}
 
 	/**
@@ -1474,56 +1531,6 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		if (($payload["expires_at"] - $payload["issued_at"]) > self::ENVELOPE_MAX_TTL_SECONDS) {
 			throw new \UnexpectedValueException("The signature watermark envelope lifetime is invalid.");
 		}
-	}
-
-	/**
-	 * @param string $field
-	 * @param array<string, mixed> $provenance
-	 * @param string $finalPng
-	 * @return void
-	 */
-	private function capture_edoc_id_from_response($field, $provenance, &$finalPng)
-	{
-		$module = $this;
-		$recorded = false;
-		$responseFailureLogged = false;
-		$fieldPattern = preg_quote($field, '/');
-
-		ob_start(function ($output) use ($module, &$recorded, &$responseFailureLogged, $fieldPattern, $provenance, &$finalPng) {
-			if (!$recorded && preg_match(
-				"/stopUpload\\(\\s*1\\s*,\\s*(['\"]){$fieldPattern}\\1\\s*,\\s*(['\"])([1-9][0-9]*)\\2/",
-				$output,
-				$matches
-			)) {
-				$recorded = true;
-				$event = $provenance;
-				$event["edoc_id"] = (int) $matches[3];
-				$event["file_sha256"] = hash("sha256", $finalPng);
-				$module->append_upload_provenance($event);
-			} elseif (
-				!$recorded && !$responseFailureLogged
-				&& preg_match('/stopUpload\\(\\s*1\\b/', $output)
-			) {
-				// We know REDCap reported an upload success, but did not
-				// recognize a trusted edoc ID for this field. Without an
-				// upload event, save-time binding will (correctly) refuse to
-				// treat the edoc as module-managed, so retain a durable clue
-				// for administrators instead of silently losing provenance.
-				$responseFailureLogged = true;
-				$module->log_upload_provenance_failure(
-					'sigwm_error_upload_provenance_response',
-					$provenance,
-					'REDCap reported a successful signature upload, but its edoc ID response could not be parsed.'
-				);
-			}
-			return $output;
-		});
-
-		// The EM framework wraps each hook invocation in its own output buffer
-		// and unconditionally closes the topmost buffer when the hook returns.
-		// Leave this inert guard on top so the provenance buffer above remains
-		// active until file_upload.php prints REDCap's stopUpload() response.
-		ob_start();
 	}
 
 	/**

@@ -487,6 +487,29 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         return $errors;
     }
 
+    function signatureUploadAfter($module, $png, $requestFields, $edocId, $context = array(), $fileSize = null, $fileSha256 = null)
+    {
+        ob_start();
+        $module->redcap_module_signature_upload_after(
+            123,
+            $context['record'] ?? null,
+            $context['instrument'] ?? 'consent',
+            $context['field'] ?? 'participant_signature',
+            $context['event_id'] ?? 417,
+            $context['group_id'] ?? null,
+            $context['repeat_instance'] ?? 1,
+            $context['survey_hash'] ?? null,
+            $context['response_id'] ?? null,
+            $context['capture_origin'] ?? 'data_entry',
+            $context['signature_type'] ?? 'signature',
+            $edocId,
+            $fileSize ?? strlen($png),
+            $fileSha256 ?? hash('sha256', $png),
+            $requestFields
+        );
+        return ob_get_clean();
+    }
+
     function captureSignatureUpload($module, $envelope, $originalPng, $edocId, $field = 'participant_signature', $signatureType = 'signature')
     {
         $_SERVER['REQUEST_METHOD'] = 'POST';
@@ -503,7 +526,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         $requestFields = $_POST;
         unset($requestFields['myfile_base64']);
 
-        ob_start();
+        $uploadCountBefore = count(payloadsForMessage($module, 'sigwm_upload'));
         ob_start();
         $errors = signatureUploadBefore($module, $png, $requestFields, array(
             'instrument' => $payload['instrument'],
@@ -512,15 +535,24 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
             'capture_origin' => $payload['capture_origin'],
             'signature_type' => $signatureType
         ));
+        $beforeOutput = ob_get_clean();
         moduleAssert($errors === array(), 'Signature upload was rejected unexpectedly.');
-        echo ob_get_clean();
-        echo "<script>window.parent.window.stopUpload(1,'{$field}','{$edocId}','signature.png','',417,'','','',1,true);</script>";
-        ob_end_flush();
-        ob_end_flush();
-        ob_get_clean();
+        moduleAssert($beforeOutput === '', 'The before-upload hook emitted output.');
+        moduleAssert(
+            count(payloadsForMessage($module, 'sigwm_upload')) === $uploadCountBefore,
+            'The before-upload hook recorded provenance before REDCap stored the edoc.'
+        );
+        $afterOutput = signatureUploadAfter($module, $png, $requestFields, $edocId, array(
+            'instrument' => $payload['instrument'],
+            'field' => $field,
+            'event_id' => $payload['event_id'],
+            'capture_origin' => $payload['capture_origin'],
+            'signature_type' => $signatureType
+        ));
+        moduleAssert($afterOutput === '', 'The after-upload hook emitted output.');
 
         $uploads = payloadsForMessage($module, 'sigwm_upload');
-        moduleAssert(!empty($uploads), 'Deferred-record signature upload did not create provenance.');
+        moduleAssert(count($uploads) === $uploadCountBefore + 1, 'Deferred-record signature upload did not create provenance.');
         return $uploads[count($uploads) - 1];
     }
 
@@ -1082,30 +1114,24 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($preexistingErrorPng === $originalPng, 'The module transformed a PNG after an earlier module rejected it.');
     moduleAssert(count($preexistingErrors) === 1 && $preexistingErrors[0]['module'] === 'earlier_module', 'The module altered an earlier upload error.');
 
-    // Reproduce the framework's hook output wrapper. It closes the topmost
-    // buffer after the module returns, which must consume only our guard.
     $uploadPng = $originalPng;
     $uploadRequestFields = $_POST;
     unset($uploadRequestFields['myfile_base64']);
     ob_start();
-    ob_start();
     $uploadErrors = signatureUploadBefore($module, $uploadPng, $uploadRequestFields);
+    $beforeUploadOutput = ob_get_clean();
     moduleAssert($uploadErrors === array(), 'Valid signature upload was rejected.');
-    echo ob_get_clean();
-    moduleAssert(count($module->logs) === 0, 'Provenance was recorded before REDCap returned an edoc ID.');
-    // Simulate a later enabled module replacing the by-reference PNG. Until
-    // the post-storage hook exists, the response observer must still hash the
-    // exact final bytes that Core stores.
+    moduleAssert($beforeUploadOutput === '', 'The before-upload hook emitted output.');
+    moduleAssert(count($module->logs) === 0, 'Provenance was recorded before REDCap stored the edoc.');
+    // Simulate a later enabled module replacing the by-reference PNG. Core's
+    // post-storage hook must report the exact final bytes that it stored.
     $laterModuleImage = imagecreatefromstring($uploadPng);
     $laterModuleMark = imagecolorallocate($laterModuleImage, 1, 2, 3);
     imagesetpixel($laterModuleImage, 0, 0, $laterModuleMark);
     ob_start();
     imagepng($laterModuleImage);
     $uploadPng = ob_get_clean();
-    echo "<script>window.parent.window.stopUpload(1,'participant_signature','98137','signature.png','',417,'','','',1,true);</script>";
-    ob_end_flush();
-    ob_end_flush();
-    $response = ob_get_clean();
+    $afterUploadOutput = signatureUploadAfter($module, $uploadPng, $uploadRequestFields, 98137);
 
     $watermarkedPng = $uploadPng;
     $info = getimagesizefromstring($watermarkedPng);
@@ -1113,9 +1139,9 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         $info[0] === 460 && $info[1] === 120 + Renderer::FOOTER_HEIGHT,
         'Before-upload hook did not replace the PNG with the two-line public-reference footer.'
     );
+    moduleAssert($afterUploadOutput === '', 'The after-upload hook emitted output.');
     moduleAssert(count($module->logs) === 1 && $module->logs[0][0] === 'sigwm_upload', 'Upload provenance was not logged.');
-    moduleAssert($module->logs[0][1]['edoc_id'] === 98137, 'The returned edoc ID was not captured.');
-    moduleAssert(strpos($response, "stopUpload(1,'participant_signature','98137'") !== false, 'The iframe response was altered.');
+    moduleAssert($module->logs[0][1]['edoc_id'] === 98137, 'The stored edoc ID was not captured.');
     $uploadProvenance = json_decode($module->logs[0][1]['payload_json'], true);
     moduleAssert($uploadProvenance['file_sha256'] === hash('sha256', $watermarkedPng), 'Provenance digest does not cover the final PNG.');
     moduleAssert($uploadProvenance['v'] === WatermarkedSignaturesExternalModule::BINDING_PROVENANCE_VERSION, 'Provenance did not use the current binding format version.');
@@ -1132,10 +1158,12 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($uploadProvenance['capture_username'] === 'data-entry-user', 'Upload provenance did not retain the current username.');
     moduleAssert($uploadProvenance['project_reference'] === 'SIGWM-TEST', 'Upload provenance did not retain the public project reference snapshot.');
     moduleAssert($uploadProvenance['field_reference'] === null, 'A legacy envelope without a field reference did not remain valid.');
+    signatureUploadAfter($module, $uploadPng, $uploadRequestFields, 98137);
+    moduleAssert(count($module->logs) === 1, 'A repeated after-upload callback duplicated upload provenance.');
 
-    $responseFailureModule = new WatermarkedSignaturesExternalModule();
-    setPrivateProperty($responseFailureModule, 'proj', new FakeProject());
-    setPrivateProperty($responseFailureModule, 'project_id', 123);
+    $afterFailureModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($afterFailureModule, 'proj', new FakeProject());
+    setPrivateProperty($afterFailureModule, 'project_id', 123);
     $_SERVER['REQUEST_METHOD'] = 'POST';
     $_GET = array('event_id' => '417', 'instance' => '1', 'page' => 'consent');
     $_POST = array(
@@ -1143,24 +1171,27 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'sigwm_envelope' => $signer->sign($payload),
         'myfile_base64' => base64_encode($originalPng)
     );
-    $responseFailurePng = $originalPng;
-    $responseFailureRequestFields = $_POST;
-    unset($responseFailureRequestFields['myfile_base64']);
+    $afterFailurePng = $originalPng;
+    $afterFailureRequestFields = $_POST;
+    unset($afterFailureRequestFields['myfile_base64']);
     ob_start();
-    ob_start();
-    $responseFailureErrors = signatureUploadBefore($responseFailureModule, $responseFailurePng, $responseFailureRequestFields);
-    moduleAssert($responseFailureErrors === array(), 'Response-failure test upload was rejected.');
-    echo ob_get_clean();
-    // A success response with an altered edoc-ID shape must leave a durable
-    // diagnostic instead of silently losing this capture's provenance.
-    echo '<script>window.parent.window.stopUpload(1,"participant_signature",98138,"signature.png","",417,"","","",1,true);</script>';
-    ob_end_flush();
-    ob_end_flush();
-    ob_get_clean();
-    moduleAssert(count($responseFailureModule->logs) === 1, 'An unparseable successful upload response did not produce a diagnostic log entry.');
-    moduleAssert($responseFailureModule->logs[0][0] === 'sigwm_error_upload_provenance_response', 'An unparseable successful upload response used the wrong diagnostic event.');
-    moduleAssert($responseFailureModule->logs[0][1]['capture_ref'] !== '', 'The response-parse diagnostic did not retain the capture reference.');
-    moduleAssert($responseFailureModule->logs[0][1]['edoc_id'] === '', 'The response-parse diagnostic incorrectly claimed an edoc ID.');
+    $afterFailureErrors = signatureUploadBefore($afterFailureModule, $afterFailurePng, $afterFailureRequestFields);
+    moduleAssert(ob_get_clean() === '', 'The invalid-after test emitted output from the before hook.');
+    moduleAssert($afterFailureErrors === array(), 'Invalid-after test upload was rejected before storage.');
+    $afterFailureOutput = signatureUploadAfter(
+        $afterFailureModule,
+        $afterFailurePng,
+        $afterFailureRequestFields,
+        98138,
+        array(),
+        null,
+        str_repeat('0', 63)
+    );
+    moduleAssert($afterFailureOutput === '', 'An invalid after-upload callback emitted output.');
+    moduleAssert(count($afterFailureModule->logs) === 1, 'An invalid after-upload callback did not produce a diagnostic log entry.');
+    moduleAssert($afterFailureModule->logs[0][0] === 'sigwm_error_upload_provenance_after', 'An invalid after-upload callback used the wrong diagnostic event.');
+    moduleAssert($afterFailureModule->logs[0][1]['capture_ref'] !== '', 'The after-upload diagnostic did not retain the capture reference.');
+    moduleAssert($afterFailureModule->logs[0][1]['edoc_id'] === 98138, 'The after-upload diagnostic did not retain the edoc ID.');
 
     $loggingFailureModule = new WatermarkedSignaturesExternalModule();
     $loggingFailureModule->failUploadProvenanceLog = true;
@@ -1177,14 +1208,12 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     $loggingFailureRequestFields = $_POST;
     unset($loggingFailureRequestFields['myfile_base64']);
     ob_start();
-    ob_start();
     $loggingFailureErrors = signatureUploadBefore($loggingFailureModule, $loggingFailurePng, $loggingFailureRequestFields);
+    $loggingFailureBeforeOutput = ob_get_clean();
     moduleAssert($loggingFailureErrors === array(), 'Logging-failure test upload was rejected.');
-    echo ob_get_clean();
-    echo "<script>window.parent.window.stopUpload(1,'participant_signature','98139','signature.png','',417,'','','',1,true);</script>";
-    ob_end_flush();
-    ob_end_flush();
-    ob_get_clean();
+    moduleAssert($loggingFailureBeforeOutput === '', 'The logging-failure before hook emitted output.');
+    $loggingFailureAfterOutput = signatureUploadAfter($loggingFailureModule, $loggingFailurePng, $loggingFailureRequestFields, 98139);
+    moduleAssert($loggingFailureAfterOutput === '', 'The logging-failure after hook emitted output.');
     moduleAssert(count($loggingFailureModule->logs) === 1, 'A failed provenance write did not produce a durable diagnostic log entry.');
     moduleAssert($loggingFailureModule->logs[0][0] === 'sigwm_error_upload_provenance_logging', 'A failed provenance write used the wrong diagnostic event.');
     moduleAssert($loggingFailureModule->logs[0][1]['edoc_id'] === 98139, 'The provenance-write diagnostic did not retain the edoc ID.');

@@ -49,28 +49,23 @@ file only after all enabled modules have run without appending an error.
 
 ## Capturing the edoc ID
 
-The upload receiver returns the new edoc ID in its iframe `stopUpload(...)`
-JavaScript response. The module starts a request-scoped output buffer after
-watermarking and parses that trusted server-generated response. Once the edoc ID
-is present, it appends a `sigwm_upload` provenance event.
+After REDCap has stored and mapped the final PNG,
+`redcap_module_signature_upload_after` supplies the authoritative edoc ID,
+file size, and SHA-256 digest. The module matches this callback to the
+request-scoped provenance prepared by the before hook and then appends the
+`sigwm_upload` event. It does not inspect or alter REDCap's iframe response.
 
-If REDCap reports a successful upload but the expected field/edoc response
-shape cannot be recognized, the module leaves REDCap's response untouched and
-appends a best-effort `sigwm_error_upload_provenance_response` diagnostic. If
-the `sigwm_upload` write itself fails, it similarly attempts a
+If the post-storage context is invalid, the module appends a best-effort
+`sigwm_error_upload_provenance_after` diagnostic. If the `sigwm_upload` write
+itself fails, it similarly attempts a
 `sigwm_error_upload_provenance_logging` diagnostic containing safe capture
 context and the technical error; an application-log entry remains the final
 fallback if the EM log is unavailable. These diagnostics deliberately exclude
 the envelope nonce and image bytes.
 
-The EM framework itself buffers hook output and closes the topmost buffer as
-soon as the hook returns. The module places an inert guard buffer above its
-response-capture buffer; the framework consumes the guard, leaving the capture
-buffer active for the subsequent output from `file_upload.php`.
-
-The buffer does not alter the response. It computes the provenance digest from
-the final by-reference PNG when REDCap reports success, so the digest also
-covers a valid transformation made by a later enabled module.
+The action-only after hook emits no output. REDCap computes the provenance
+digest from the final PNG after all before-hook transformations, so the digest
+also covers a valid transformation made by a later enabled module.
 
 ## WM1 image format
 
