@@ -438,15 +438,35 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         return $count;
     }
 
-    function injectedConfig($html)
+    function signatureUploadClientConfig($module, $captureOrigin, $signatureFields = null)
     {
-        moduleAssert(
-            preg_match('/window\.REDCapSignatureWatermark=(\{.*?\});<\/script>/s', $html, $matches) === 1,
-            'Signature watermark configuration was not injected.'
+        if ($signatureFields === null) {
+            $signatureFields = array('participant_signature', 'witness_signature');
+        }
+        $hiddenInputsByField = array();
+        ob_start();
+        $module->redcap_module_signature_upload_client_config(
+            123,
+            null,
+            'consent',
+            417,
+            null,
+            1,
+            $captureOrigin,
+            $signatureFields,
+            $hiddenInputsByField
         );
-        $config = json_decode($matches[1], true);
-        moduleAssert(is_array($config), 'Injected signature watermark configuration was invalid.');
-        return $config;
+        moduleAssert(ob_get_clean() === '', 'The client-configuration hook emitted output.');
+        $envelopes = array();
+        foreach ($hiddenInputsByField as $field => $inputs) {
+            if (isset($inputs['sigwm_envelope'])) {
+                $envelopes[$field] = $inputs['sigwm_envelope'];
+            }
+        }
+        return array(
+            'envelopes' => $envelopes,
+            'hidden_inputs_by_field' => $hiddenInputsByField
+        );
     }
 
     function captureSignatureUpload($module, $envelope, $originalPng, $edocId, $field = 'participant_signature')
@@ -521,9 +541,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     moduleAssert($customBackgroundProfile['requested_mode'] === 'custom', 'Configured custom background image lost its selected mode.');
     moduleAssert($customBackgroundProfile['sha256'] === hash('sha256', $customBackgroundPng), 'Custom background image digest was not calculated.');
     moduleAssert($customBackgroundProfile['contents'] === $customBackgroundPng, 'Custom background image contents were not read from REDCap storage.');
-    ob_start();
-    invokePrivate($customBackgroundModule, 'inject_capture_envelopes', array('consent', 417, 'data_entry'));
-    $customBackgroundConfig = injectedConfig(ob_get_clean());
+    $customBackgroundConfig = signatureUploadClientConfig($customBackgroundModule, 'data_entry');
     $customBackgroundUpload = captureSignatureUpload(
         $customBackgroundModule,
         $customBackgroundConfig['envelopes']['participant_signature'],
@@ -717,15 +735,10 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     $multiEnvelopeProject->metadata['witness_signature']['misc'] = '@WATERMARKED-SIGNATURE="WITNESS"';
     setPrivateProperty($multiEnvelopeModule, 'proj', $multiEnvelopeProject);
     setPrivateProperty($multiEnvelopeModule, 'project_id', 123);
-    ob_start();
-    invokePrivate($multiEnvelopeModule, 'inject_capture_envelopes', array('consent', 417, 'data_entry'));
-    $multiEnvelopeHtml = ob_get_clean();
-    moduleAssert(
-        preg_match('/window\.REDCapSignatureWatermark=(\{.*?\});<\/script>/s', $multiEnvelopeHtml, $configMatch) === 1,
-        'Per-field envelope configuration was not injected.'
-    );
-    $multiEnvelopeConfig = json_decode($configMatch[1], true);
+    $multiEnvelopeConfig = signatureUploadClientConfig($multiEnvelopeModule, 'data_entry');
     moduleAssert(count($multiEnvelopeConfig['envelopes']) === 2, 'Multiple configured signature fields did not receive separate envelopes.');
+    $singleFieldConfig = signatureUploadClientConfig($multiEnvelopeModule, 'data_entry', array('participant_signature'));
+    moduleAssert(array_keys($singleFieldConfig['envelopes']) === array('participant_signature'), 'The module configured an envelope for a field not supplied by REDCap.');
     $participantEnvelope = $signer->verify($multiEnvelopeConfig['envelopes']['participant_signature']);
     $witnessEnvelope = $signer->verify($multiEnvelopeConfig['envelopes']['witness_signature']);
     moduleAssert($participantEnvelope['field'] === 'participant_signature', 'Participant envelope was scoped to the wrong field.');
@@ -757,9 +770,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     $invalidFieldReferenceModule->framework = new FakeFramework();
     setPrivateProperty($invalidFieldReferenceModule, 'proj', $invalidFieldReferenceProject);
     setPrivateProperty($invalidFieldReferenceModule, 'project_id', 123);
-    ob_start();
-    invokePrivate($invalidFieldReferenceModule, 'inject_capture_envelopes', array('consent', 417, 'data_entry'));
-    $invalidFieldReferenceConfig = injectedConfig(ob_get_clean());
+    $invalidFieldReferenceConfig = signatureUploadClientConfig($invalidFieldReferenceModule, 'data_entry');
     $invalidFieldReferenceEnvelope = $signer->verify($invalidFieldReferenceConfig['envelopes']['participant_signature']);
     moduleAssert($invalidFieldReferenceEnvelope['field_reference'] === null, 'An invalid field-reference action-tag parameter was not omitted.');
     moduleAssert($invalidFieldReferenceEnvelope['field_reference_error'] === 'field_reference_too_long', 'An oversized field-reference action-tag parameter was not identified.');
@@ -883,10 +894,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     setPrivateProperty($autoNumberModule, 'proj', new FakeProject());
     setPrivateProperty($autoNumberModule, 'project_id', 123);
     \ExternalModules\ExternalModules::$username = 'auto-capture-user';
-    ob_start();
-    $autoNumberModule->redcap_data_entry_form(123, null, 'consent', 417, null, 1);
-    $autoNumberHtml = ob_get_clean();
-    $autoNumberConfig = injectedConfig($autoNumberHtml);
+    $autoNumberConfig = signatureUploadClientConfig($autoNumberModule, 'data_entry');
     $autoNumberEnvelope = $signer->verify($autoNumberConfig['envelopes']['participant_signature']);
     moduleAssert($autoNumberEnvelope['capture_origin'] === 'data_entry', 'Data-entry envelope did not identify its capture origin.');
     moduleAssert($autoNumberEnvelope['record_ref'] === null, 'Tentative auto-number record leaked into the capture envelope.');
@@ -925,15 +933,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     setPrivateProperty($surveyModule, 'proj', new FakeProject());
     setPrivateProperty($surveyModule, 'project_id', 123);
     \ExternalModules\ExternalModules::$username = null;
-    ob_start();
-    $surveyModule->redcap_survey_page(123, null, 'consent', 417, null, 'public-survey-hash', null, 1);
-    $surveyHtml = ob_get_clean();
-    $surveyConfig = injectedConfig($surveyHtml);
-    moduleAssert(
-        strpos($surveyHtml, '(function (window, $) {') !== false
-        && strpos($surveyHtml, 'src="/modules/watermarked_signatures/js/signature-watermark.js"') === false,
-        'Survey rendering did not inline the signature envelope helper.'
-    );
+    $surveyConfig = signatureUploadClientConfig($surveyModule, 'survey');
     $surveyEnvelope = $signer->verify($surveyConfig['envelopes']['participant_signature']);
     moduleAssert($surveyEnvelope['capture_origin'] === 'survey', 'Survey envelope did not identify its capture origin.');
     moduleAssert($surveyEnvelope['record_ref'] === null, 'First-page survey envelope assumed a record ID.');
@@ -967,9 +967,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     setPrivateProperty($replaySurveyModule, 'project_id', 123);
     \ExternalModules\ExternalModules::$username = null;
     ExternalModulesStub::$noAuth = true;
-    ob_start();
-    $replaySurveyModule->redcap_survey_page(123, null, 'consent', 417, null, 'public-survey-hash', null, 1);
-    $replaySurveyConfig = injectedConfig(ob_get_clean());
+    $replaySurveyConfig = signatureUploadClientConfig($replaySurveyModule, 'survey');
     $replayEnvelope = $replaySurveyConfig['envelopes']['participant_signature'];
     captureSignatureUpload($replaySurveyModule, $replayEnvelope, $originalPng, 99505);
     $replayLogCount = count($replaySurveyModule->logs);
@@ -995,9 +993,7 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     setPrivateProperty($abandonedSurveyModule, 'proj', new FakeProject());
     setPrivateProperty($abandonedSurveyModule, 'project_id', 123);
     \ExternalModules\ExternalModules::$username = null;
-    ob_start();
-    $abandonedSurveyModule->redcap_survey_page(123, null, 'consent', 417, null, 'public-survey-hash', null, 1);
-    $abandonedSurveyConfig = injectedConfig(ob_get_clean());
+    $abandonedSurveyConfig = signatureUploadClientConfig($abandonedSurveyModule, 'survey');
     captureSignatureUpload(
         $abandonedSurveyModule,
         $abandonedSurveyConfig['envelopes']['participant_signature'],

@@ -180,10 +180,12 @@ integrity-protected opaque transport value is appropriate.
 
 **Return:** Nothing. Modify `$hidden_inputs_by_field` by reference.
 
-**Restrictions:** Input names must be valid HTML form-control names; values
-must be scalar strings within a documented size limit. REDCap should reject
-invalid entries rather than rendering them. Modules must use names that are
-unique to their prefix. REDCap does not consider these values trusted.
+**Restrictions:** Input names must begin with an ASCII letter, contain only
+ASCII letters, digits, underscores, periods, colons, and hyphens, and be at
+most 128 characters. REDCap's own upload input names are reserved. Values must
+be valid UTF-8 strings of at most 16,384 bytes. REDCap omits invalid entries
+rather than rendering them. Modules must use names that are unique to their
+prefix. REDCap does not consider these values trusted.
 
 **Location of execution:** During data-entry and survey page rendering, after
 the signature field list and page context are known and before the built-in

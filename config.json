@@ -14,6 +14,9 @@
         }
     ],
     "framework-version": 16,
+    "compatibility": {
+        "redcap-version-min": "17.5.2"
+    },
     "enable-no-auth-logging": true,
     "auth-ajax-actions": [
         "validate-project-settings"

@@ -27,7 +27,7 @@ verification pages.
 
 ## Before you begin
 
-This release requires REDCap 17.3.0 or later. A REDCap administrator must first
+This release requires REDCap 17.5.2 or later. A REDCap administrator must first
 install the External Module using the institution's normal module-management
 process and make it available to the project.
 

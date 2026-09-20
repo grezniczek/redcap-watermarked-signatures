@@ -53,9 +53,6 @@ require_once "classes/Verification/ProjectVerificationController.php";
 
 class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExternalModule
 {
-	/** @var bool Whether browser-side debug logging is enabled. */
-	private $js_debug = false;
-
 	/** @var \Project */
 	private $proj = null;
 
@@ -84,36 +81,27 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 
 	/**
 	 * @param int $project_id
-	 * @param string $record
+	 * @param string|null $record
 	 * @param string $instrument
 	 * @param int $event_id
 	 * @param int|null $group_id
 	 * @param int $repeat_instance
+	 * @param string $capture_origin
+	 * @param string[] $signature_fields
+	 * @param array<string,array<string,string>> $hidden_inputs_by_field
 	 * @return void
 	 */
-	function redcap_data_entry_form($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance)
+	function redcap_module_signature_upload_client_config($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance, $capture_origin, $signature_fields, &$hidden_inputs_by_field)
 	{
 		$this->init_proj($project_id);
 		$this->init_config();
-		$this->inject_capture_envelopes($instrument, $event_id, self::ORIGIN_DATA_ENTRY);
-	}
-
-	/**
-	 * @param int $project_id
-	 * @param string $record
-	 * @param string $instrument
-	 * @param int $event_id
-	 * @param int|null $group_id
-	 * @param string $survey_hash
-	 * @param int $response_id
-	 * @param int $repeat_instance
-	 * @return void
-	 */
-	function redcap_survey_page($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance)
-	{
-		$this->init_proj($project_id);
-		$this->init_config();
-		$this->inject_capture_envelopes($instrument, $event_id, self::ORIGIN_SURVEY);
+		$this->inject_capture_envelopes(
+			$instrument,
+			$event_id,
+			$capture_origin,
+			$signature_fields,
+			$hidden_inputs_by_field
+		);
 	}
 
 	/**
@@ -1076,21 +1064,34 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	 * @param string $instrument
 	 * @param int $event_id
 	 * @param 'data_entry'|'survey' $captureOrigin
+	 * @param string[] $signatureFields
+	 * @param array<string,array<string,string>> $hiddenInputsByField
 	 * @return void
 	 */
-	private function inject_capture_envelopes($instrument, $event_id, $captureOrigin)
+	private function inject_capture_envelopes($instrument, $event_id, $captureOrigin, $signatureFields, &$hiddenInputsByField)
 	{
 		if (!$this->is_valid_origin($captureOrigin)) {
 			throw new \InvalidArgumentException("Invalid signature capture origin.");
 		}
-		$fields = $this->get_configured_signature_fields($instrument);
+		if (!is_array($hiddenInputsByField)) {
+			$hiddenInputsByField = array();
+		}
+		$availableFields = array_fill_keys(
+			array_values(array_filter($signatureFields, 'is_string')),
+			true
+		);
+		$fields = array_values(array_filter(
+			$this->get_configured_signature_fields($instrument),
+			function ($field) use ($availableFields) {
+				return isset($availableFields[$field]);
+			}
+		));
 		if (empty($fields)) {
 			return;
 		}
 
 		$now = time();
 		$signer = new EnvelopeSigner(KeyDerivation::derive(KeyDerivation::ENVELOPE_INFO));
-		$envelopes = array();
 		$projectReference = $this->public_project_reference();
 		$metadata = $this->get_project_metadata();
 
@@ -1138,26 +1139,11 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				"nonce" => ReferenceGenerator::nonce(),
 				"purpose" => "signature"
 			);
-			$envelopes[$field] = $signer->sign($payload);
+			if (!isset($hiddenInputsByField[$field]) || !is_array($hiddenInputsByField[$field])) {
+				$hiddenInputsByField[$field] = array();
+			}
+			$hiddenInputsByField[$field]['sigwm_envelope'] = $signer->sign($payload);
 		}
-
-		$config = json_encode(
-			array(
-				"envelopes" => $envelopes,
-				"debug" => $this->js_debug
-			),
-			JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
-		);
-
-		echo "<script type=\"text/javascript\">window.REDCapSignatureWatermark={$config};</script>";
-		// The configured public survey endpoint can be hosted separately from
-		// REDCap's normal webroot. Inline the small client-side helper there so
-		// a respondent does not need to fetch a module asset from that other
-		// endpoint before the signed envelope can accompany the upload.
-		InjectionHelper::init($this)->js(
-			"js/signature-watermark.js",
-			$captureOrigin === self::ORIGIN_SURVEY
-		);
 	}
 
 	/** @return void */
@@ -1824,8 +1810,6 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	private function init_config()
 	{
 		$this->require_proj();
-		$setting = $this->getProjectSetting("javascript-debug");
-		$this->js_debug = $setting == true;
 	}
 
 	/**

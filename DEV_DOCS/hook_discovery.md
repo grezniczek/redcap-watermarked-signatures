@@ -7,16 +7,18 @@ The initial implementation was developed against the REDCap source available in
 
 ## Page rendering
 
-`redcap_data_entry_form` and `redcap_survey_page` run after REDCap has rendered
-the file/signature dialog JavaScript. The module uses these hooks to:
+`redcap_module_signature_upload_client_config` runs after REDCap has resolved
+the current instrument and its signature fields and before it renders the
+shared file/signature dialog. The module uses this hook to:
 
 1. enumerate action-tagged signature fields on the current instrument;
 2. create one signed, short-lived envelope per field; and
-3. wrap REDCap's global `filePopUp()` function so the correct envelope is added
-   to the dynamically created iframe upload form.
+3. add the envelope to REDCap's field-specific hidden-input configuration.
 
-This supports multiple signature fields because the wrapper selects the
-envelope by the `fieldName` argument supplied by REDCap.
+REDCap owns the shared form lifecycle: it clears previously managed inputs and
+adds only the values configured for the signature field whose dialog is being
+opened. This supports multiple signature fields without replacing a browser
+global or retaining stale values for ordinary uploads.
 
 `@WATERMARKED-SIGNATURE` may carry one simple quoted field-reference parameter,
 for example `@WATERMARKED-SIGNATURE="CONSENT"`. The module accepts a trimmed
@@ -160,12 +162,11 @@ repeat instance may be unknown when upload occurs.
 
 ## New records and first-page surveys (Phase 4B)
 
-The initial data-entry and survey render hooks do not provide an authoritative
-record ID for every new-record flow. In the inspected REDCap source,
-`DataEntry/index.php` invokes `redcap_data_entry_form` with a null record for a
-new form, and `Surveys/index.php` can invoke `redcap_survey_page` with a null
-record on the first public-survey page. The value eventually assigned by an
-auto-numbered save must therefore not be captured early.
+The client-configuration hook does not provide an authoritative record ID for
+every new-record flow. In the inspected REDCap source, it receives a null
+record for a new data-entry form and for the first public-survey page. The value
+eventually assigned by an auto-numbered save must therefore not be captured
+early.
 
 Capture envelopes deliberately contain `record_ref: null` and no `record_id`.
 They carry the stable project, event, instrument, and field scope plus a random

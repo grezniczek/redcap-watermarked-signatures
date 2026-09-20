@@ -6,23 +6,6 @@
 **Primary purpose:** Reduce the risk that a signature image captured in a REDCap signature field is reused outside the context in which it was originally captured.
 
 
-## 0. Tooling hints
-
-The JavaScript smoke test is intentionally dependency-free and is compatible
-with the Node.js versions used by the development machines. Run it with the
-`node` executable available on the current machine:
-
-```bash
-node tests/js_smoke.js
-```
-
-Some development machines provide Node.js 22 through an NVM-managed path;
-others may provide a system Node.js version. Do not hard-code a machine-local
-path in automation or documentation. The test currently also passes with Node
-18.
-
----
-
 ## 1. Objective
 
 The module adds a visible, context-bound watermark to newly captured REDCap signature images, whether the signature was drawn or typed.
@@ -1222,9 +1205,8 @@ pages/
     verify-project.php
     verify-admin.php
 js/
-    signature-watermark.js
-css/
-    signature-watermark.css
+    online-designer-action-tag-audit.js
+    project-settings.js
 ```
 
 The exact structure should follow the conventions of the existing module template and the REDCap External Module framework version targeted.
@@ -1498,14 +1480,14 @@ A first usable release should satisfy all of the following:
 The first implementation has resolved the original architecture decisions as
 follows:
 
-1. **REDCap hooks:** page envelopes are injected through
-   `redcap_data_entry_form` and `redcap_survey_page`; upload interception uses
+1. **REDCap hooks:** page envelopes are supplied through
+   `redcap_module_signature_upload_client_config`; upload interception uses
    `redcap_every_page_before_render` for the signature upload receiver; and
    authoritative binding uses `redcap_save_record`.
-2. **Field-specific iframe envelope:** the page script wraps REDCap's global
-   `filePopUp()` function and adds or replaces the hidden envelope input for
-   the field being uploaded. It removes that input for ordinary uploads so an
-   iframe form cannot retain a stale envelope.
+2. **Field-specific iframe envelope:** REDCap owns the shared upload form and
+   adds the hook-configured hidden envelope for the field being uploaded. It
+   removes module-managed inputs before every dialog is opened and does not add
+   them for ordinary uploads.
 3. **Capture-reference timing:** a fresh capture reference is generated at
    upload time, immediately before server-side rendering. The envelope carries
    the separately generated, field-specific context reference.
@@ -1537,7 +1519,7 @@ follows:
 10. **Binding failure policy:** upload-time failures block storage of a clean
     signature. Save-time binding failures are recorded as structured events;
     they do not block REDCap's completed save in the current release.
-11. **Supported REDCap version:** the module currently requires REDCap 17.3.0
+11. **Supported REDCap version:** the module currently requires REDCap 17.5.2
     or later. Compatibility testing on the exact deployed REDCap maintenance
     releases remains a release-validation activity.
 12. **Project verification access:** the project link and controller allow
