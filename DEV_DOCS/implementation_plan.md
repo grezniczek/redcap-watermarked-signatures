@@ -1484,9 +1484,9 @@ follows:
    `redcap_module_signature_upload_client_config`; decoded PNG validation and
    transformation use `redcap_module_signature_upload_before`; successful
    edoc storage is reported through `redcap_module_signature_upload_after`;
+   record renames are reported through `redcap_module_record_rename_after`;
    and authoritative binding uses `redcap_save_record`. The broad
-   `redcap_every_page_before_render` hook is no longer used for signature
-   uploads.
+   `redcap_every_page_before_render` hook is no longer required.
 2. **Field-specific iframe envelope:** REDCap owns the shared upload form and
    adds the hook-configured hidden envelope for the field being uploaded. It
    removes module-managed inputs before every dialog is opened and does not add
@@ -1533,6 +1533,10 @@ follows:
     users with Control Center dashboard access. Plaintext e-Consent and
     data-entry IP evidence is separately restricted to users who can access the
     enabled Database Query Tool.
+13. **Record-rename tracking:** the post-rename hook supplies the authoritative
+    old/new IDs, arm scope, route origin, and operator after REDCap has updated
+    its own references and the External Module log index. The module no longer
+    infers completion from form POST values or Record Home/API response output.
 
 The hook details and authorization/verification boundaries are maintained in
 `hook_discovery.md` and `verification_contract.md`. Future decisions should be

@@ -84,6 +84,7 @@ class VerificationModule
                     'record' => $event['record'],
                     'message' => $event['message'],
                     'previous_record_id' => $payload['old_record_id'] ?? null,
+                    'arm_number' => $payload['arm_number'] ?? null,
                     'rename_origin' => $payload['rename_origin'] ?? null,
                     'rename_username' => $payload['rename_username'] ?? null,
                     'renamed_at' => $payload['renamed_at'] ?? null
@@ -430,6 +431,7 @@ $renamedModule->addEvent('sigwm_record_rename', array(
     'pid' => 123,
     'old_record_id' => 'R-001',
     'new_record_id' => 'R-002',
+    'arm_number' => 1,
     'rename_origin' => 'data_entry_record_home',
     'rename_username' => 'rename-user',
     'renamed_at' => '2026-07-17T20:00:07.906Z'
@@ -440,6 +442,7 @@ verificationAssert($renamed['current_record_id'] === 'R-002', 'Verification did 
 verificationAssert($renamedCurrent->lastBinding['record_id'] === 'R-002', 'Live field lookup used the historical record ID after rename.');
 $renameHistory = (new LogRepository($renamedModule, $mac))->findRecordRenameEventsByCurrentRecord(123, 'R-002');
 verificationAssert(count($renameHistory) === 1 && $renameHistory[0]['previous_record_id'] === 'R-001', 'Current record rename history was not found.');
+verificationAssert($renameHistory[0]['arm_number'] === 1, 'Record rename history lost its arm scope.');
 
 $current->value = '98138';
 verificationAssert($service->verify($captureReference, 123)['status'] === 'valid_historical', 'Historical signature was not distinguished from the current value.');

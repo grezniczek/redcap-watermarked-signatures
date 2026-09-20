@@ -342,7 +342,7 @@ class AdministratorVerificationController
 				'event_id', 'instrument', 'field', 'capture_origin',
 				'capture_username', 'save_origin', 'save_username', 'bound_at',
 				'technical_message', 'original_log_id', 'binding_log_id',
-				'previous_record_id', 'rename_origin', 'rename_username', 'renamed_at'
+				'previous_record_id', 'arm_number', 'rename_origin', 'rename_username', 'renamed_at'
 			));
 			if (!empty($entry)) {
 				$presented[] = $entry;

@@ -104,7 +104,7 @@ class LogRepository
 		}
 
 		$result = $this->queryLogsPrimary(
-			'select log_id, timestamp, username, project_id, record, message, previous_record_id, rename_origin, rename_username, renamed_at where message = ? and project_id = ? and record = ? order by log_id asc',
+			'select log_id, timestamp, username, project_id, record, message, previous_record_id, arm_number, rename_origin, rename_username, renamed_at where message = ? and project_id = ? and record = ? order by log_id asc',
 			array('sigwm_record_rename', (int) $projectId, (string) $recordId)
 		);
 		$events = array();
@@ -254,7 +254,7 @@ class LogRepository
 	}
 
 	/**
-	 * @param array{v: int, pid: int, new_record_id: string, old_record_id: string, rename_origin: string, rename_username: string|null, renamed_at: string} $event
+	 * @param array{v: int, pid: int, new_record_id: string, old_record_id: string, arm_number: int|null, rename_origin: string, rename_username: string|null, renamed_at: string} $event
 	 * @return void
 	 */
 	public function appendRecordRename($event)
@@ -262,6 +262,7 @@ class LogRepository
 		$this->module->log('sigwm_record_rename', array(
 			'record' => $event['new_record_id'],
 			'previous_record_id' => $event['old_record_id'],
+			'arm_number' => $event['arm_number'],
 			'rename_origin' => $event['rename_origin'],
 			'rename_username' => $event['rename_username'],
 			'renamed_at' => $event['renamed_at'],

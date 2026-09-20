@@ -218,21 +218,54 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	}
 
 	/**
-	 * Retain the broad page hook only for record-rename auditing. Signature
-	 * uploads are handled by the dedicated signature-upload hooks.
-	 *
-	 * @param int|null $project_id
+	 * @param int $project_id
+	 * @param string $old_record
+	 * @param string $new_record
+	 * @param int|null $arm_number
+	 * @param string $rename_origin
+	 * @param string|null $username
 	 * @return void
 	 */
-	function redcap_every_page_before_render($project_id)
+	function redcap_module_record_rename_after($project_id, $old_record, $new_record, $arm_number, $rename_origin, $username)
 	{
-		if ($project_id == null) {
-			return;
-		}
+		try {
+			$this->init_proj($project_id);
+			$this->init_config();
 
-		$this->init_proj($project_id);
-		$this->init_config();
-		$this->capture_direct_record_rename();
+			$validOrigins = array('data_entry_form_save', 'data_entry_record_home', 'api', 'programmatic');
+			if (
+				!is_string($old_record) || $old_record === ''
+				|| !is_string($new_record) || $new_record === ''
+				|| $old_record === $new_record
+				|| ($arm_number !== null && (!is_int($arm_number) || $arm_number < 1))
+				|| !in_array($rename_origin, $validOrigins, true)
+				|| ($username !== null && !is_string($username))
+			) {
+				throw new \UnexpectedValueException('The record-rename hook context is invalid.');
+			}
+
+			$repository = new LogRepository($this, $this->binding_mac());
+			$boundNewRecord = $repository->findBoundRecordId($new_record);
+			if ($boundNewRecord === null) {
+				return;
+			}
+
+			$this->append_record_rename_event(
+				$repository,
+				$old_record,
+				$boundNewRecord,
+				$arm_number,
+				$rename_origin,
+				$username
+			);
+		} catch (Throwable $exception) {
+			// The rename has already completed. Preserve REDCap data and retain
+			// an actionable diagnostic without interrupting the response.
+			$this->safe_log_event('sigwm_error_record_rename_tracking', array(
+				'record' => is_scalar($new_record) ? (string) $new_record : '',
+				'technical_message' => substr($exception->getMessage(), 0, 1000)
+			));
+		}
 	}
 
 	/**
@@ -305,17 +338,6 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 		$saveUsername = $this->current_username();
 
 		try {
-			$this->track_form_save_record_rename($record, $saveOrigin, $saveUsername);
-		} catch (Throwable $exception) {
-			// Rename auditing must never interfere with REDCap's successful
-			// save or with the independent signature-binding path below.
-			$this->safe_log_event("sigwm_error_record_rename_tracking", array(
-				"record" => (string) $record,
-				"technical_message" => substr($exception->getMessage(), 0, 1000)
-			));
-		}
-
-		try {
 			$this->bind_saved_signatures(
 				$record,
 				$instrument,
@@ -335,35 +357,6 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 				"technical_message" => substr($exception->getMessage(), 0, 1000)
 			));
 		}
-	}
-
-	/**
-	 * REDCap calls this after API token/rights authorization and before it
-	 * dispatches the selected legacy API action.
-	 *
-	 * @param int|string|null $project_id
-	 * @param array<string, mixed> $post
-	 * @return null
-	 */
-	function redcap_module_api_before($project_id, $post)
-	{
-		if (
-			!is_numeric($project_id) || (int) $project_id < 1 || !is_array($post)
-			|| ($post['content'] ?? null) !== 'record' || ($post['action'] ?? null) !== 'rename'
-		) {
-			return null;
-		}
-
-		$requestedOldRecord = $this->record_name_from_values($post, 'record');
-		$requestedNewRecord = $this->record_name_from_values($post, 'new_record_name');
-		if ($requestedOldRecord === null || $requestedNewRecord === null || $requestedOldRecord === $requestedNewRecord) {
-			return null;
-		}
-
-		$this->init_proj((int) $project_id);
-		$this->init_config();
-		$this->capture_record_rename_response($requestedOldRecord, $requestedNewRecord, 'api');
-		return null;
 	}
 
 	/**
@@ -990,160 +983,15 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 	}
 
 	/**
-	 * @param string $record
-	 * @param 'data_entry'|'survey' $saveOrigin
-	 * @param string|null $saveUsername
-	 * @return void
-	 */
-	private function track_form_save_record_rename($record, $saveOrigin, $saveUsername)
-	{
-		if ($saveOrigin !== self::ORIGIN_DATA_ENTRY || !isset($_POST['__old_id__']) || isset($_POST['__rename_failed__'])) {
-			return;
-		}
-
-		$oldRecord = trim(html_entity_decode((string) $_POST['__old_id__'], ENT_QUOTES));
-		$newRecord = (string) $record;
-		if ($oldRecord === '' || $newRecord === '' || $oldRecord === $newRecord) {
-			return;
-		}
-
-		$repository = new LogRepository($this, $this->binding_mac());
-		// REDCap has already renamed the indexed record column by the time
-		// redcap_save_record runs. If no signature binding moved with it,
-		// there is no module history that needs a durable rename event.
-		$boundNewRecord = $repository->findBoundRecordId($newRecord);
-		if ($boundNewRecord === null) {
-			return;
-		}
-
-		$this->append_record_rename_event(
-			$repository,
-			$oldRecord,
-			$boundNewRecord,
-			'data_entry_form_save',
-			$saveUsername
-		);
-	}
-
-	/**
-	 * Capture REDCap's record-home rename route only after its controller
-	 * returns success. There is no dedicated External Module hook for this
-	 * route in REDCap 17.3, so the response is the server-side confirmation
-	 * that the trusted route completed its rename.
-	 *
-	 * @return void
-	 */
-	private function capture_direct_record_rename()
-	{
-		if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
-			|| ($_GET['route'] ?? '') !== 'DataEntryController:renameRecord'
-		) {
-			return;
-		}
-
-		$requestedOldRecord = $this->posted_record_name('record');
-		$requestedNewRecord = $this->posted_record_name('new_record');
-		if ($requestedOldRecord === null || $requestedNewRecord === null || $requestedOldRecord === $requestedNewRecord) {
-			return;
-		}
-
-		$this->capture_record_rename_response($requestedOldRecord, $requestedNewRecord, 'data_entry_record_home');
-	}
-
-	/**
-	 * Begin observing a trusted REDCap rename response. The caller must run
-	 * before the core rename operation; a success response is the evidence
-	 * that the change actually completed.
-	 *
-	 * @param string $requestedOldRecord
-	 * @param string $requestedNewRecord
-	 * @param string $renameOrigin
-	 * @return void
-	 */
-	private function capture_record_rename_response($requestedOldRecord, $requestedNewRecord, $renameOrigin)
-	{
-		try {
-			$repository = new LogRepository($this, $this->binding_mac());
-			// Resolve the stored spelling before REDCap changes the record.
-			// This also makes the capture a no-op for records with no module
-			// binding to preserve.
-			$oldRecord = $repository->findBoundRecordId($requestedOldRecord);
-			if ($oldRecord === null) {
-				return;
-			}
-		} catch (Throwable $exception) {
-			$this->safe_log_event('sigwm_error_record_rename_tracking', array(
-				'record' => $requestedOldRecord,
-				'technical_message' => substr($exception->getMessage(), 0, 1000)
-			));
-			return;
-		}
-
-		$module = $this;
-		$renameUsername = $this->current_username();
-		ob_start(function ($output) use ($module, $oldRecord, $requestedNewRecord, $renameOrigin, $renameUsername) {
-			if (trim($output) === '1') {
-				try {
-					$repository = new LogRepository($module, $module->binding_mac());
-					// Looking this up after the controller completed gives us
-					// REDCap's final spelling in the multi-arm case.
-					$newRecord = $repository->findBoundRecordId($requestedNewRecord);
-					if ($newRecord !== null) {
-						$module->append_record_rename_event(
-							$repository,
-							$oldRecord,
-							$newRecord,
-							$renameOrigin,
-							$renameUsername
-						);
-					}
-				} catch (Throwable $exception) {
-					$module->safe_log_event('sigwm_error_record_rename_tracking', array(
-						'record' => $oldRecord,
-						'technical_message' => substr($exception->getMessage(), 0, 1000)
-					));
-				}
-			}
-			return $output;
-		});
-
-		// The EM framework closes its topmost hook buffer on return. Keep an
-		// inert guard above this record-rename response observer.
-		ob_start();
-	}
-
-	/**
-	 * @param string $key
-	 * @return string|null
-	 */
-	private function posted_record_name($key)
-	{
-		return $this->record_name_from_values($_POST, $key);
-	}
-
-	/**
-	 * @param array<string, mixed> $values
-	 * @param string $key
-	 * @return string|null
-	 */
-	private function record_name_from_values($values, $key)
-	{
-		if (!is_array($values) || !isset($values[$key]) || !is_scalar($values[$key])) {
-			return null;
-		}
-		$record = trim((string) $values[$key]);
-		return $record === '' ? null : $record;
-	}
-
-	/**
 	 * @param LogRepository $repository
 	 * @param string $oldRecord
 	 * @param string $newRecord
+	 * @param int|null $armNumber
 	 * @param string $renameOrigin
 	 * @param string|null $renameUsername
 	 * @return void
 	 */
-	private function append_record_rename_event(LogRepository $repository, $oldRecord, $newRecord, $renameOrigin, $renameUsername)
+	private function append_record_rename_event(LogRepository $repository, $oldRecord, $newRecord, $armNumber, $renameOrigin, $renameUsername)
 	{
 		if ($oldRecord === $newRecord) {
 			return;
@@ -1154,6 +1002,7 @@ class WatermarkedSignaturesExternalModule extends \ExternalModules\AbstractExter
 			'pid' => (int) $this->project_id,
 			'old_record_id' => (string) $oldRecord,
 			'new_record_id' => (string) $newRecord,
+			'arm_number' => $armNumber,
 			'rename_origin' => (string) $renameOrigin,
 			'rename_username' => $renameUsername,
 			'renamed_at' => $this->utc_now()

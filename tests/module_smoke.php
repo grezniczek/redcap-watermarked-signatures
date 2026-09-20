@@ -1254,17 +1254,27 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
     );
     $formRenameModule->redcap_save_record(123, 'RENAME-OLD', 'consent', 417, null, null, null, 1);
     // REDCap changes the module log's indexed record column before calling
-    // redcap_save_record after a form-level record-ID rename.
+    // the post-rename hook.
     $formRenameModule->logs[1][1]['record'] = 'RENAME-NEW';
     REDCap::$data = array(
         'RENAME-NEW' => array(417 => array('participant_signature' => '98140'))
     );
-    $_POST = array('__old_id__' => 'RENAME-OLD');
-    $formRenameModule->redcap_save_record(123, 'RENAME-NEW', 'consent', 417, null, null, null, 1);
+    ob_start();
+    $formRenameModule->redcap_module_record_rename_after(
+        123,
+        'RENAME-OLD',
+        'RENAME-NEW',
+        1,
+        'data_entry_form_save',
+        'form-rename-user'
+    );
+    moduleAssert(ob_get_clean() === '', 'The form-save record-rename hook emitted output.');
     $formRenameEvents = payloadsForMessage($formRenameModule, 'sigwm_record_rename');
     moduleAssert(count($formRenameEvents) === 1, 'A form-save record rename was not tracked.');
     moduleAssert($formRenameEvents[0]['old_record_id'] === 'RENAME-OLD' && $formRenameEvents[0]['new_record_id'] === 'RENAME-NEW', 'Form-save record rename captured the wrong record IDs.');
+    moduleAssert($formRenameEvents[0]['arm_number'] === 1, 'Form-save record rename lost its arm scope.');
     moduleAssert($formRenameEvents[0]['rename_origin'] === 'data_entry_form_save', 'Form-save record rename has the wrong origin.');
+    moduleAssert($formRenameEvents[0]['rename_username'] === 'form-rename-user', 'Form-save record rename lost its trusted username.');
     moduleAssert($formRenameModule->logs[2][1]['record'] === 'RENAME-NEW', 'Record-rename log was not indexed by the current record ID.');
 
     $directRenameModule = new WatermarkedSignaturesExternalModule();
@@ -1276,22 +1286,23 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'HOME-OLD' => array(417 => array('participant_signature' => '98141'))
     );
     $directRenameModule->redcap_save_record(123, 'HOME-OLD', 'consent', 417, null, null, null, 1);
-    $_SERVER['REQUEST_METHOD'] = 'POST';
-    $_GET = array('route' => 'DataEntryController:renameRecord');
-    $_POST = array('record' => 'HOME-OLD', 'new_record' => 'HOME-NEW');
-    ob_start();
-    ob_start();
-    invokePrivate($directRenameModule, 'capture_direct_record_rename');
-    echo ob_get_clean();
     $directRenameModule->logs[1][1]['record'] = 'HOME-NEW';
-    echo '1';
-    ob_end_flush();
-    ob_end_flush();
-    ob_get_clean();
+    ob_start();
+    $directRenameModule->redcap_module_record_rename_after(
+        123,
+        'HOME-OLD',
+        'HOME-NEW',
+        2,
+        'data_entry_record_home',
+        'home-rename-user'
+    );
+    moduleAssert(ob_get_clean() === '', 'The Record Home rename hook emitted output.');
     $directRenameEvents = payloadsForMessage($directRenameModule, 'sigwm_record_rename');
     moduleAssert(count($directRenameEvents) === 1, 'A successful record-home rename was not tracked.');
     moduleAssert($directRenameEvents[0]['old_record_id'] === 'HOME-OLD' && $directRenameEvents[0]['new_record_id'] === 'HOME-NEW', 'Record-home rename captured the wrong record IDs.');
+    moduleAssert($directRenameEvents[0]['arm_number'] === 2, 'Record-home rename lost its arm scope.');
     moduleAssert($directRenameEvents[0]['rename_origin'] === 'data_entry_record_home', 'Record-home rename has the wrong origin.');
+    moduleAssert($directRenameEvents[0]['rename_username'] === 'home-rename-user', 'Record-home rename lost its trusted username.');
 
     $apiRenameModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($apiRenameModule, 'proj', new FakeProject());
@@ -1302,24 +1313,60 @@ namespace DE\RUB\WatermarkedSignaturesExternalModule\Tests {
         'API-OLD' => array(417 => array('participant_signature' => '98142'))
     );
     $apiRenameModule->redcap_save_record(123, 'API-OLD', 'consent', 417, null, null, null, 1);
-    ob_start();
-    ob_start();
-    moduleAssert($apiRenameModule->redcap_module_api_before(123, array(
-        'content' => 'record',
-        'action' => 'rename',
-        'record' => 'API-OLD',
-        'new_record_name' => 'API-NEW'
-    )) === null, 'API rename pre-hook unexpectedly returned an error.');
-    echo ob_get_clean();
     $apiRenameModule->logs[1][1]['record'] = 'API-NEW';
-    echo '1';
-    ob_end_flush();
-    ob_end_flush();
-    ob_get_clean();
+    ob_start();
+    $apiRenameModule->redcap_module_record_rename_after(
+        123,
+        'API-OLD',
+        'API-NEW',
+        null,
+        'api',
+        'api-rename-user'
+    );
+    moduleAssert(ob_get_clean() === '', 'The API record-rename hook emitted output.');
     $apiRenameEvents = payloadsForMessage($apiRenameModule, 'sigwm_record_rename');
     moduleAssert(count($apiRenameEvents) === 1, 'A successful API rename was not tracked.');
     moduleAssert($apiRenameEvents[0]['old_record_id'] === 'API-OLD' && $apiRenameEvents[0]['new_record_id'] === 'API-NEW', 'API rename captured the wrong record IDs.');
+    moduleAssert($apiRenameEvents[0]['arm_number'] === null, 'Cross-arm API rename did not retain a null arm scope.');
     moduleAssert($apiRenameEvents[0]['rename_origin'] === 'api', 'API rename has the wrong origin.');
+    moduleAssert($apiRenameEvents[0]['rename_username'] === 'api-rename-user', 'API rename lost its trusted username.');
+
+    foreach ($apiRenameModule->logs as &$apiRenameLog) {
+        if (($apiRenameLog[1]['record'] ?? null) === 'API-NEW') {
+            $apiRenameLog[1]['record'] = 'API-FINAL';
+        }
+    }
+    unset($apiRenameLog);
+    $apiRenameModule->redcap_module_record_rename_after(
+        123,
+        'API-NEW',
+        'API-FINAL',
+        null,
+        'programmatic',
+        null
+    );
+    $apiRenameEvents = payloadsForMessage($apiRenameModule, 'sigwm_record_rename');
+    moduleAssert(count($apiRenameEvents) === 2, 'A successful programmatic rename was not tracked exactly once.');
+    moduleAssert($apiRenameEvents[1]['rename_origin'] === 'programmatic', 'Programmatic rename has the wrong origin.');
+    moduleAssert($apiRenameEvents[1]['rename_username'] === null, 'Programmatic rename did not retain its nullable username.');
+
+    $unboundRenameModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($unboundRenameModule, 'proj', new FakeProject());
+    setPrivateProperty($unboundRenameModule, 'project_id', 123);
+    $unboundRenameModule->redcap_module_record_rename_after(123, 'UNBOUND-OLD', 'UNBOUND-NEW', 1, 'programmatic', null);
+    moduleAssert($unboundRenameModule->logs === array(), 'A rename with no signature binding created module history.');
+
+    $invalidRenameModule = new WatermarkedSignaturesExternalModule();
+    setPrivateProperty($invalidRenameModule, 'proj', new FakeProject());
+    setPrivateProperty($invalidRenameModule, 'project_id', 123);
+    ob_start();
+    $invalidRenameModule->redcap_module_record_rename_after(123, 'INVALID-OLD', 'INVALID-NEW', 1, 'untrusted', null);
+    moduleAssert(ob_get_clean() === '', 'An invalid record-rename callback emitted output.');
+    moduleAssert(
+        count($invalidRenameModule->logs) === 1
+            && $invalidRenameModule->logs[0][0] === 'sigwm_error_record_rename_tracking',
+        'An invalid record-rename callback did not produce a technical diagnostic.'
+    );
 
     $repeatInstrumentModule = new WatermarkedSignaturesExternalModule();
     setPrivateProperty($repeatInstrumentModule, 'proj', new FakeProject('instrument'));

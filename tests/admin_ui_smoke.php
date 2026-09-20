@@ -120,6 +120,7 @@ $repository->renameDiagnostics = array(array(
     'record' => '12',
     'message' => 'sigwm_record_rename',
     'previous_record_id' => '9',
+    'arm_number' => 2,
     'rename_origin' => 'data_entry_record_home',
     'rename_username' => 'gr',
     'renamed_at' => '2026-07-17T20:00:07.906Z'
@@ -200,6 +201,7 @@ adminUiAssert(count($presented['diagnostics']) === 2, 'Administrator diagnostic 
 adminUiAssert($presented['diagnostics'][0]['message'] === 'sigwm_record_rename', 'Administrator history was not sorted with the newest event first.');
 adminUiAssert(!isset($presented['diagnostics'][1]['payload_json']) && !isset($presented['diagnostics'][1]['binding_mac']), 'Raw diagnostic payload values escaped administrator history.');
 adminUiAssert($presented['diagnostics'][0]['record'] === '12' && $presented['diagnostics'][0]['previous_record_id'] === '9', 'Administrator history did not preserve record-rename details.');
+adminUiAssert($presented['diagnostics'][0]['arm_number'] === 2, 'Administrator history did not preserve record-rename arm scope.');
 $service->result['checks']['binding_econsent_ip_mac'] = true;
 $service->result['binding']['v'] = 3;
 $service->result['binding']['econsent_survey_id'] = 715;
